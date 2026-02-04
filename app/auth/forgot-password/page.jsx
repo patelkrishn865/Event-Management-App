@@ -66,7 +66,7 @@ export default function ForgotPasswordPage() {
       const redirectTo =
         typeof window !== "undefined"
           ? `${window.location.origin}/auth/reset-password`
-          : "http://localhost:3000/auth/reset-password";
+          : "https://event-management-app-lac-pi.vercel.app/auth/reset-password";
 
       const { error } = await supabase.auth.resetPasswordForEmail(values.email.trim(), {
         redirectTo,
