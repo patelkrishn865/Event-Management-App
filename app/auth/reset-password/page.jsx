@@ -76,8 +76,10 @@ export default function ResetPasswordPage() {
     async function checkSession() {
       try {
         // Check if we have a code in the URL (from email link)
+        // Supabase can send it in hash (#code=...) or query (?code=...)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const code = hashParams.get('code');
+        const queryParams = new URLSearchParams(window.location.search);
+        const code = hashParams.get('code') || queryParams.get('code');
 
         if (code) {
           // Exchange the code for a session
