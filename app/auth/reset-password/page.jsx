@@ -74,14 +74,37 @@ export default function ResetPasswordPage() {
     let mounted = true;
 
     async function checkSession() {
-      const { data: { session } } = await supabase.auth.getSession();
+      try {
+        // Check if we have a code in the URL (from email link)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const code = hashParams.get('code');
 
-      if (!mounted) return;
+        if (code) {
+          // Exchange the code for a session
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
 
-      if (!session) {
-        setServerMsg("Reset link is invalid or has expired. Please request a new one.");
+          if (error) {
+            if (!mounted) return;
+            setServerMsg("Reset link is invalid or has expired. Please request a new one.");
+            setReady(true);
+            return;
+          }
+        }
+
+        // Now check if we have a valid session
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        if (!session) {
+          setServerMsg("Reset link is invalid or has expired. Please request a new one.");
+        }
+        setReady(true);
+      } catch (err) {
+        if (!mounted) return;
+        setServerMsg("An error occurred. Please try again.");
+        setReady(true);
       }
-      setReady(true);
     }
 
     checkSession();
