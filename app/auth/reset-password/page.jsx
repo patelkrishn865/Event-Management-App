@@ -75,25 +75,7 @@ export default function ResetPasswordPage() {
 
     async function checkSession() {
       try {
-        // Check if we have a code in the URL (from email link)
-        // Supabase can send it in hash (#code=...) or query (?code=...)
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const queryParams = new URLSearchParams(window.location.search);
-        const code = hashParams.get('code') || queryParams.get('code');
-
-        if (code) {
-          // Exchange the code for a session
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-          if (error) {
-            if (!mounted) return;
-            setServerMsg("Reset link is invalid or has expired. Please request a new one.");
-            setReady(true);
-            return;
-          }
-        }
-
-        // Now check if we have a valid session
+        // Check if we have a valid session (set by the callback route)
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!mounted) return;
