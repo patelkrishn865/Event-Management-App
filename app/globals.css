@@ -1,26 +1,218 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
+/* ------------------------------------------------------------
+   Tailwind v4 theme tokens mapped to CSS variables (shadcn style)
+------------------------------------------------------------ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ------------------------------------------------------------
+   BRAND THEME (2–3 colors):
+   - Primary: Indigo
+   - Secondary: Emerald
+   - Neutral: shadcn slate/gray
+   Uses OKLCH (same format you already use)
+------------------------------------------------------------ */
+:root {
+  --radius: 0.75rem;
+
+  /* neutrals */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.13 0.03 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.13 0.03 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.13 0.03 260);
+
+  --muted: oklch(0.97 0.005 260);
+  --muted-foreground: oklch(0.55 0.03 260);
+
+  --border: oklch(0.93 0.01 260);
+  --input: oklch(0.93 0.01 260);
+
+  /* ✅ Primary Indigo */
+  --primary: oklch(0.56 0.20 275);
+  --primary-foreground: oklch(0.985 0.002 247.839);
+
+  /* ✅ Secondary Emerald */
+  --secondary: oklch(0.62 0.18 155);
+  --secondary-foreground: oklch(0.985 0.002 247.839);
+
+  /* Accent (soft indigo tint used for subtle highlights) */
+  --accent: oklch(0.95 0.03 275);
+  --accent-foreground: oklch(0.20 0.06 275);
+
+  --destructive: oklch(0.62 0.23 27);
+
+  /* focus ring */
+  --ring: oklch(0.70 0.12 275);
+
+  /* charts (optional) */
+  --chart-1: oklch(0.62 0.20 275); /* indigo-ish */
+  --chart-2: oklch(0.62 0.18 155); /* emerald-ish */
+  --chart-3: oklch(0.60 0.12 215);
+  --chart-4: oklch(0.78 0.16 85);
+  --chart-5: oklch(0.70 0.18 40);
+
+  /* sidebar */
+  --sidebar: oklch(0.985 0.002 247.839);
+  --sidebar-foreground: oklch(0.13 0.03 260);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+.dark {
+  /* neutrals */
+  --background: oklch(0.12 0.03 260);
+  --foreground: oklch(0.98 0.005 260);
+
+  --card: oklch(0.17 0.03 260);
+  --card-foreground: oklch(0.98 0.005 260);
+
+  --popover: oklch(0.17 0.03 260);
+  --popover-foreground: oklch(0.98 0.005 260);
+
+  --muted: oklch(0.22 0.03 260);
+  --muted-foreground: oklch(0.74 0.02 260);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+
+  /* ✅ Primary Indigo (brighter in dark) */
+  --primary: oklch(0.70 0.18 275);
+  --primary-foreground: oklch(0.12 0.03 260);
+
+  /* ✅ Secondary Emerald (brighter in dark) */
+  --secondary: oklch(0.72 0.16 155);
+  --secondary-foreground: oklch(0.12 0.03 260);
+
+  --accent: oklch(0.22 0.05 275);
+  --accent-foreground: oklch(0.98 0.005 260);
+
+  --destructive: oklch(0.72 0.19 22);
+
+  --ring: oklch(0.74 0.12 275);
+
+  --chart-1: oklch(0.70 0.18 275);
+  --chart-2: oklch(0.72 0.16 155);
+  --chart-3: oklch(0.70 0.14 215);
+  --chart-4: oklch(0.75 0.16 85);
+  --chart-5: oklch(0.72 0.16 40);
+
+  --sidebar: oklch(0.17 0.03 260);
+  --sidebar-foreground: oklch(0.98 0.005 260);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+@keyframes ping-slow {
+  75%, 100% { transform: scale(1.8); opacity: 0; }
+}
+.animate-ping-slow {
+  animation: ping-slow 2.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes bounce-once {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+.animate-bounce-once {
+  animation: bounce-once 1.2s ease-in-out;
+}
+
+/* ------------------------------------------------------------
+   Premium helpers (use anywhere in pages)
+------------------------------------------------------------ */
+@layer utilities {
+  .brand-glow {
+    background:
+      radial-gradient(900px 500px at 10% 0%, hsl(var(--primary) / 0.18), transparent 60%),
+      radial-gradient(700px 450px at 100% 10%, hsl(var(--secondary) / 0.16), transparent 55%);
+  }
+
+  .glass {
+    background: hsl(var(--background) / 0.75);
+    backdrop-filter: blur(10px);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ------------------------------------------------------------
+   Base
+------------------------------------------------------------ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
 }
