@@ -105,7 +105,12 @@ export default function ResetPasswordPage() {
 
       if (error) throw error;
 
-      setServerMsg("Password updated successfully! Redirecting to login...");
+      setServerMsg("Password updated successfully! Signing out...");
+
+      // Sign out to ensure the user can actually reach the login page 
+      // (otherwise middleware would redirect them straight to dashboard)
+      await supabase.auth.signOut();
+
       setTimeout(() => router.push("/auth/login"), 1500);
     } catch (err) {
       setServerMsg(err.message || "Failed to update password. Please try again.");
