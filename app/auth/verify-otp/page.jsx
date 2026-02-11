@@ -29,7 +29,7 @@ import { ShieldCheck, ArrowRight, Loader2, ArrowLeft } from "lucide-react";
  */
 const schema = z.object({
     email: z.string().email("Enter a valid email"),
-    token: z.string().min(6, "Enter the 6-digit code").max(6, "Enter the 6-digit code"),
+    token: z.string().min(6, "Enter the verification code").max(8, "Enter the verification code"),
 });
 
 function VerifyOtpForm() {
@@ -87,7 +87,7 @@ function VerifyOtpForm() {
                             Verify Code
                         </CardTitle>
                         <CardDescription className="text-base">
-                            Enter the 6-digit code sent to your email
+                            Enter the verification code sent to your email
                         </CardDescription>
                     </CardHeader>
 
@@ -123,11 +123,11 @@ function VerifyOtpForm() {
                                     name="token"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>6-Digit Token</FormLabel>
+                                            <FormLabel>Verification Token</FormLabel>
                                             <FormControl>
                                                 <Input
-                                                    placeholder="123456"
-                                                    maxLength={6}
+                                                    placeholder="12345678"
+                                                    maxLength={8}
                                                     className="rounded-2xl h-11 text-center text-2xl tracking-[0.5em] font-bold"
                                                     {...field}
                                                 />
