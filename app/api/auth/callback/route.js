@@ -5,7 +5,20 @@ import { NextResponse } from 'next/server';
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
-    const next = searchParams.get('next') ?? '/dashboard';
+    const type = searchParams.get('type');
+
+    // Default redirect based on type
+    let next = searchParams.get('next');
+    if (!next) {
+        if (type === 'recovery') {
+            next = '/auth/reset-password';
+        } else if (type === 'signup') {
+            next = '/auth/login';
+        } else {
+            next = '/dashboard';
+        }
+    }
+
     const error = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
 
