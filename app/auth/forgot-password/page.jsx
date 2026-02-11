@@ -61,7 +61,7 @@ export default function ForgotPasswordPage() {
 
       if (error) throw error;
 
-      setServerMsg("If an account exists, you will receive a 6-digit code. Redirecting to verification...");
+      setServerMsg("If an account exists, you will receive a verification code. Redirecting to verification...");
 
       // Redirect to OTP verification page after a short delay
       setTimeout(() => {
@@ -93,7 +93,7 @@ export default function ForgotPasswordPage() {
               Forgot Password
             </CardTitle>
             <CardDescription className="text-base">
-              We'll send you a link to reset your password
+              We'll send you a code to reset your password
             </CardDescription>
           </CardHeader>
 
@@ -141,10 +141,10 @@ export default function ForgotPasswordPage() {
                   {loading ? (
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Sending reset link...
+                      Sending reset code...
                     </div>
                   ) : (
-                    "Send Reset Link"
+                    "Send Reset Code"
                   )}
                 </Button>
 

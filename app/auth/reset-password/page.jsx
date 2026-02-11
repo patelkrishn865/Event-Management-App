@@ -105,7 +105,7 @@ export default function ResetPasswordPage() {
 
       if (error) throw error;
 
-      setServerMsg("Password updated successfully! Signing out...");
+      setServerMsg("Password updated successfully! Redirecting to login...");
 
       // Sign out to ensure the user can actually reach the login page 
       // (otherwise middleware would redirect them straight to dashboard)
