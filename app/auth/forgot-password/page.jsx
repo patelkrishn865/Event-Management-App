@@ -61,7 +61,12 @@ export default function ForgotPasswordPage() {
 
       if (error) throw error;
 
-      setServerMsg("Password reset link sent! Check your inbox (including spam).");
+      setServerMsg("If an account exists, you will receive a 6-digit code. Redirecting to verification...");
+
+      // Redirect to OTP verification page after a short delay
+      setTimeout(() => {
+        router.push(`/auth/verify-otp?email=${encodeURIComponent(values.email.trim())}`);
+      }, 2000);
     } catch (err) {
       setServerMsg(err.message || "Something went wrong. Please try again.");
     } finally {
