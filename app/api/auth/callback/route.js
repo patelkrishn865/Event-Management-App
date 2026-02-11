@@ -57,12 +57,26 @@ export async function GET(request) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
         if (!exchangeError) {
-            // Determine final destination
-            // Forced fallback for password recovery often arrives without 'next'
-            const finalDestination = type === 'recovery' ? '/auth/reset-password' : next
+            // Priority 1: Use 'next' parameter if present
+            // Priority 2: Use 'type=recovery' to go to reset-password
+            // Priority 3: Check if request URL itself mentions recovery
+            // Priority 4: Default to dashboard
+
+            let finalDestination = '/dashboard'
+            const nextParam = searchParams.get('next')
+
+            if (nextParam) {
+                finalDestination = nextParam
+            } else if (type === 'recovery' || request.url.toLowerCase().includes('recovery')) {
+                finalDestination = '/auth/reset-password'
+            } else if (type === 'signup') {
+                finalDestination = '/auth/login'
+            }
 
             console.log('Auth Success, Redirecting to:', finalDestination)
-            return NextResponse.redirect(`${origin}${finalDestination}`)
+
+            // Use relative URL to avoid origin mismatches
+            return NextResponse.redirect(new URL(finalDestination, request.url))
         }
 
         // Handle exchange failure (e.g., token already used or expired)
