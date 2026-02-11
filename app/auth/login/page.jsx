@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -30,7 +30,7 @@ const schema = z.object({
 });
 
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [serverMsg, setServerMsg] = useState(null);
@@ -189,7 +189,7 @@ export default function LoginPage() {
 
                 {/* Sign up link */}
                 <p className="text-center text-sm text-muted-foreground pt-2">
-                  Don’t have an account?{" "}
+                  Don't have an account?{" "}
                   <button
                     type="button"
                     className="text-primary font-medium hover:underline"
@@ -204,5 +204,13 @@ export default function LoginPage() {
         </Card>
       </GlowBorder>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }
