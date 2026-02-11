@@ -63,6 +63,10 @@ export default async function proxy(request) {
 
     // If user is logged in and trying to access auth pages
     if (user && url.pathname.startsWith("/auth")) {
+        // Exception: Allow password reset even if session exists (OTP just verified)
+        if (url.pathname === "/auth/reset-password") {
+            return response;
+        }
         return NextResponse.redirect(new URL("/dashboard", request.url));
     }
 
