@@ -22,14 +22,20 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 
-import { Eye, EyeOff, LogIn, ArrowRight, KeyRound } from "lucide-react";
+import { Eye, EyeOff, LogIn, ArrowRight } from "lucide-react";
 
+/**
+ * Validation Schema
+ */
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
   password: z.string().min(1, "Password is required"),
 });
 
-
+/**
+ * LoginForm Component
+ * Handles the login UI and logic, including error handling from callbacks.
+ */
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -48,33 +54,35 @@ function LoginForm() {
     [form.formState.isValid, form.formState.isSubmitting, loading]
   );
 
-  // Check for error parameter from callback redirect or hash
+  /**
+   * Effect: Process errors from URL parameters or hash fragments
+   */
   useEffect(() => {
-    // 1. Check query parameters
-    const error = searchParams.get('error');
-    if (error) {
-      setServerMsg(decodeURIComponent(error));
-      // Clear the query param to avoid re-showing on refresh
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
+    // 1. Check for 'error' query parameter (from server-side redirects)
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      setServerMsg(decodeURIComponent(errorParam).replace(/\+/g, ' '));
+      // Clean URL history
+      window.history.replaceState({}, '', window.location.pathname);
       return;
     }
 
-    // 2. Check hash (common for Supabase errors)
+    // 2. Check for hash parameters (common for some Supabase oauth/email flows)
     const hash = window.location.hash;
     if (hash && hash.includes('error=')) {
-      const params = new URLSearchParams(hash.substring(1)); // remove #
-      const errorDescription = params.get('error_description');
-      const errorMsg = params.get('error');
-
-      if (errorDescription || errorMsg) {
-        setServerMsg(decodeURIComponent(errorDescription || errorMsg).replace(/\+/g, ' '));
-        // Clear hash
+      const params = new URLSearchParams(hash.substring(1));
+      const desc = params.get('error_description') || params.get('error');
+      if (desc) {
+        setServerMsg(decodeURIComponent(desc).replace(/\+/g, ' '));
+        // Clean URL history
         window.history.replaceState({}, '', window.location.pathname);
       }
     }
   }, [searchParams]);
 
+  /**
+   * Form Submission
+   */
   async function onSubmit(values) {
     setServerMsg(null);
     setLoading(true);
@@ -87,6 +95,7 @@ function LoginForm() {
 
       if (error) throw error;
 
+      // Successful login
       router.push("/dashboard");
     } catch (err) {
       setServerMsg(err.message || "Invalid email or password. Please try again.");
@@ -97,11 +106,11 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center p-6">
-      {/* Background blobs — same as dashboard & signup */}
+      {/* Visual Background */}
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -top-40 -left-40 h-130 w-130 rounded-full bg-primary/18 blur-3xl animate-pulse-slow" />
-        <div className="absolute top-20 -right-44 h-140 w-140 rounded-full bg-secondary/14 blur-3xl animate-pulse-slow delay-500" />
-        <div className="absolute -bottom-60 left-1/3 h-130 w-130 rounded-full bg-primary/10 blur-3xl animate-pulse-slow delay-1000" />
+        <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-primary/18 blur-3xl animate-pulse-slow" />
+        <div className="absolute top-20 -right-44 h-[560px] w-[560px] rounded-full bg-secondary/14 blur-3xl animate-pulse-slow delay-500" />
+        <div className="absolute -bottom-60 left-1/3 h-[520px] w-[520px] rounded-full bg-primary/10 blur-3xl animate-pulse-slow delay-1000" />
       </div>
 
       <GlowBorder className="w-full max-w-lg animate-fade-in-up">
@@ -110,35 +119,34 @@ function LoginForm() {
             <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <LogIn className="h-8 w-8 text-primary" />
             </div>
-            <CardTitle className="text-3xl font-bold tracking-tight">
+            <CardTitle className="text-3xl font-bold tracking-tight text-foreground">
               Welcome Back
             </CardTitle>
-            <CardDescription className="text-base">
+            <CardDescription className="text-base text-muted-foreground">
               Log in to manage your events and tickets
             </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-6 pt-4">
             {serverMsg && (
-              <Alert variant="destructive" className="rounded-2xl">
-                <AlertDescription className="text-center">{serverMsg}</AlertDescription>
+              <Alert variant="destructive" className="rounded-2xl border-destructive/20 bg-destructive/10">
+                <AlertDescription className="text-center font-medium">{serverMsg}</AlertDescription>
               </Alert>
             )}
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                {/* Email */}
                 <FormField
                   control={form.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel className="text-foreground/80">Email</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="you@example.com"
                           autoComplete="email"
-                          className="rounded-2xl h-11"
+                          className="rounded-2xl h-11 bg-background"
                           {...field}
                         />
                       </FormControl>
@@ -147,17 +155,16 @@ function LoginForm() {
                   )}
                 />
 
-                {/* Password */}
                 <FormField
                   control={form.control}
                   name="password"
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel>Password</FormLabel>
+                        <FormLabel className="text-foreground/80">Password</FormLabel>
                         <button
                           type="button"
-                          className="text-xs text-primary hover:underline"
+                          className="text-xs text-primary font-medium hover:underline focus:outline-none"
                           onClick={() => router.push("/auth/forgot-password")}
                         >
                           Forgot password?
@@ -168,7 +175,7 @@ function LoginForm() {
                           <Input
                             type={showPass ? "text" : "password"}
                             autoComplete="current-password"
-                            className="rounded-2xl h-11 pr-10"
+                            className="rounded-2xl h-11 pr-10 bg-background"
                             {...field}
                           />
                           <Button
@@ -191,27 +198,27 @@ function LoginForm() {
                   )}
                 />
 
-                {/* Submit */}
                 <Button
                   type="submit"
-                  className="w-full rounded-2xl h-11 font-medium"
+                  className="w-full rounded-2xl h-11 font-semibold text-lg"
                   disabled={!canSubmit || loading}
                 >
                   {loading ? (
-                    <>Logging in...</>
+                    <div className="flex items-center gap-2">
+                      Logging in...
+                    </div>
                   ) : (
-                    <>
-                      Log In <ArrowRight className="ml-2 h-4 w-4" />
-                    </>
+                    <span className="flex items-center gap-2">
+                      Log In <ArrowRight className="h-5 w-5" />
+                    </span>
                   )}
                 </Button>
 
-                {/* Sign up link */}
                 <p className="text-center text-sm text-muted-foreground pt-2">
                   Don't have an account?{" "}
                   <button
                     type="button"
-                    className="text-primary font-medium hover:underline"
+                    className="text-primary font-bold hover:underline"
                     onClick={() => router.push("/auth/signup")}
                   >
                     Sign up
@@ -226,9 +233,12 @@ function LoginForm() {
   );
 }
 
+/**
+ * Main Page Export with Suspense for useSearchParams
+ */
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-medium">Loading login...</div>}>
       <LoginForm />
     </Suspense>
   );
