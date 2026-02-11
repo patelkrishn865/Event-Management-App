@@ -65,12 +65,12 @@ export async function GET(request) {
             let finalDestination = '/dashboard'
             const nextParam = searchParams.get('next')
 
-            if (nextParam) {
+            if (type === 'signup') {
+                finalDestination = '/auth/confirm-email'
+            } else if (nextParam) {
                 finalDestination = nextParam
             } else if (type === 'recovery' || request.url.toLowerCase().includes('recovery')) {
                 finalDestination = '/auth/reset-password'
-            } else if (type === 'signup') {
-                finalDestination = '/auth/confirm-email'
             }
 
             console.log('Auth Success, Redirecting to:', finalDestination)

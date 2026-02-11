@@ -58,8 +58,8 @@ export default function SignupPage() {
     try {
       const redirectTo =
         typeof window !== "undefined"
-          ? `${window.location.origin}/auth/login`
-          : "https://event-management-app-lac-pi.vercel.app/auth/login";
+          ? `${window.location.origin}/auth/confirm-email`
+          : "https://event-management-app-lac-pi.vercel.app/auth/confirm-email";
 
       const { data, error } = await supabase.auth.signUp({
         email: values.email.trim(),
