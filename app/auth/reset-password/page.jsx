@@ -62,8 +62,26 @@ export default function ResetPasswordPage() {
 
     async function checkSession() {
       try {
-        // Give the Supabase client a moment to parse the fragment if it's there
-        // This is crucial for the implicit flow (fragment based)
+        // 1. Check for 'code' in query params (if Secure Email Links is ON)
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+
+        if (code) {
+          console.log('Detected code in URL, exchanging for session...');
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+          if (exchangeError) {
+            console.error('Code exchange error:', exchangeError);
+            setServerMsg("The reset link is invalid or has expired.");
+            setReady(true);
+            return;
+          }
+          // After exchange, we should have a session
+          setReady(true);
+          return;
+        }
+
+        // 2. Check for hash fragment (if Secure Email Links is OFF)
+        // Give it a moment to parse
         await new Promise(r => setTimeout(r, 500));
 
         const { data: { session } } = await supabase.auth.getSession();
@@ -71,8 +89,7 @@ export default function ResetPasswordPage() {
         if (!mounted) return;
 
         if (!session) {
-          // If no session found immediately, try one more time after a longer delay
-          // This handles slower client-side initialization
+          // One final retry for slower clients
           const { data: { session: retrySession } } = await supabase.auth.getSession();
           if (!retrySession) {
             setServerMsg("Reset link is invalid or has expired. Please request a new one.");
