@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 
 import { KeyRound, Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 const schema = z
   .object({
@@ -36,20 +37,6 @@ const schema = z
     path: ["confirmPassword"],
   });
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-[1px] bg-gradient-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition-all duration-300",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur-md">{children}</div>
-    </div>
-  );
-}
 
 export default function ResetPasswordPage() {
   const router = useRouter();

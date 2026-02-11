@@ -21,14 +21,8 @@ import {
   ExternalLink,
   ArrowLeft,
 } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
-function GlowBorder({ children }) {
-  return (
-    <div className="rounded-3xl p-px bg-linear-to-br from-primary/45 via-foreground/10 to-secondary/40">
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 function stars(n) {
   return (
@@ -115,9 +109,8 @@ export default function AdminFeedbackPage() {
         rating,
         comments,
         suggestions,
-        user_id,
-        created_at,
-        event:events ( id, title )
+        event:events ( id, title ),
+        user:profiles ( id, full_name, role )
       `)
       .order("created_at", { ascending: false });
 
@@ -241,6 +234,9 @@ export default function AdminFeedbackPage() {
                     <div className="min-w-0">
                       <div className="font-semibold truncate">
                         {f.event?.title || "Event"}
+                      </div>
+                      <div className="text-sm font-medium text-primary/80">
+                        By: {f.user?.full_name || "Anonymous / Deleted User"}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         <CalendarDays className="inline h-3.5 w-3.5 mr-1" />

@@ -21,7 +21,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Keyboard,
-  AlertCircle,
+  Settings,
   Loader2,
 } from "lucide-react";
 
@@ -54,11 +54,11 @@ export default function StaffScanPage() {
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
   const [history, setHistory] = useState([]);
+  const [permissionError, setPermissionError] = useState(false);
 
   const scannerRef = useRef(null);
   const runningRef = useRef(false);
   const busyRef = useRef(false);
-  const pauseTimerRef = useRef(null);
 
   function pushHistory(kind, title, subtitle) {
     setHistory((prev) => [
@@ -213,6 +213,7 @@ export default function StaffScanPage() {
     if (authStatus !== "authorized" || busy) return;
 
     setMsg(null);
+    setPermissionError(false);
     setScannerStatus("starting");
 
     await stopScanner();
@@ -235,8 +236,16 @@ export default function StaffScanPage() {
       setScannerStatus("ready");
       setMsg("Scanner active. Point at QR code.");
     } catch (e) {
-      setScannerStatus("error");
-      setMsg(`Camera error: ${String(e)}`);
+      console.error("Scanner start error:", e);
+      const errStr = String(e).toLowerCase();
+      if (errStr.includes("not allowed") || errStr.includes("permission") || errStr.includes("denied")) {
+        setPermissionError(true);
+        setScannerStatus("stopped");
+        setMsg("Camera permission denied.");
+      } else {
+        setScannerStatus("error");
+        setMsg(`Camera error: ${String(e)}`);
+      }
     }
   }
 
@@ -347,20 +356,51 @@ export default function StaffScanPage() {
 
           <CardContent className="pb-6 space-y-6">
             <div className="rounded-3xl border bg-background/55 p-4">
-              <div className="relative overflow-hidden rounded-2xl border bg-black aspect-square max-w-100 mx-auto">
-                <div id="qr-reader" className="w-full h-full" />
-                {scannerStatus === "ready" && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-72 h-72 border-4 border-primary/70 rounded-2xl animate-pulse-slow" />
+              {permissionError ? (
+                <div className="flex flex-col items-center justify-center h-80 bg-background/50 rounded-2xl p-6 text-center space-y-4">
+                  <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center">
+                    <CameraOff className="h-8 w-8 text-destructive" />
                   </div>
-                )}
-              </div>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">Camera Access Denied</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                      We need camera access to scan tickets. Please enable permissions in your browser settings.
+                    </p>
+                  </div>
+                  <div className="bg-muted/50 rounded-xl p-3 text-xs w-full max-w-xs space-y-2">
+                    <p className="font-medium flex items-center gap-2">
+                      <Settings className="h-3 w-3" />
+                      How to enable:
+                    </p>
+                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-left ml-1">
+                      <li>Tap the lock icon in the address bar</li>
+                      <li>Select "Permissions" or "Site Settings"</li>
+                      <li>Allow "Camera" access</li>
+                      <li>Refresh this page</li>
+                    </ol>
+                  </div>
+                  <Button className="rounded-2xl" onClick={() => window.location.reload()}>
+                    Refresh Page
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative overflow-hidden rounded-2xl border bg-black aspect-square max-w-100 mx-auto">
+                  <div id="qr-reader" className="w-full h-full" />
+                  {scannerStatus === "ready" && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-72 h-72 border-4 border-primary/70 rounded-2xl animate-pulse-slow" />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-4 text-center text-sm font-medium min-h-12 flex items-center justify-center">
                 {busy ? (
                   <span className="text-primary flex items-center justify-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" /> Verifying...
                   </span>
+                ) : permissionError ? (
+                  <span className="text-destructive">Please enable camera access</span>
                 ) : scannerStatus === "ready" ? (
                   "Point camera at QR code"
                 ) : scannerStatus === "verifying" ? (

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 import {
   ArrowLeft,
@@ -23,22 +25,11 @@ import {
   User,
   UserCheck,
   UserX,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-[1px] bg-gradient-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -52,6 +43,7 @@ function fmtDate(iso) {
 function roleBadge(role) {
   if (role === "admin") return <Badge>Admin</Badge>;
   if (role === "organizer") return <Badge variant="secondary">Organizer</Badge>;
+  if (role === "pending_organizer") return <Badge className="bg-amber-500 text-white hover:bg-amber-600 border-none">Pending Organizer</Badge>;
   return <Badge variant="outline">Attendee</Badge>;
 }
 
@@ -83,13 +75,16 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState([]);
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [updatingId, setUpdatingId] = useState(null);
+  const [currentUserId, setCurrentUserId] = useState(null);
 
-  async function load() {
+  async function load(clearMsg = true) {
     setLoading(true);
-    setMsg(null);
+    if (clearMsg) setMsg(null);
     const { data: sessionWrap } = await supabase.auth.getSession();
     const user = sessionWrap?.session?.user;
     if (!user) return router.replace("/auth/login");
+    setCurrentUserId(user.id);
 
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
@@ -106,7 +101,7 @@ export default function AdminUsersPage() {
       .select("id, full_name, email, role, created_at")
       .order("created_at", { ascending: false });
 
-    if (error) return setMsg(error.message);
+    if (error) return setMsg({ type: "error", text: error.message });
     setUsers(data || []);
     setLoading(false);
   }
@@ -118,7 +113,11 @@ export default function AdminUsersPage() {
   const filtered = useMemo(() => {
     const term = q.toLowerCase();
     return users.filter((u) => {
-      if (roleFilter !== "all" && u.role !== roleFilter) return false;
+      if (roleFilter === "requests") {
+        if (u.role !== "pending_organizer") return false;
+      } else if (roleFilter !== "all" && u.role !== roleFilter) {
+        return false;
+      }
       if (!term) return true;
       return (
         u.email?.toLowerCase().includes(term) ||
@@ -128,12 +127,34 @@ export default function AdminUsersPage() {
   }, [users, q, roleFilter]);
 
   async function changeRole(userId, role) {
-    const { error } = await supabase
-      .from("profiles")
-      .update({ role })
-      .eq("id", userId);
-    if (error) return setMsg(error.message);
-    load();
+    setUpdatingId(userId);
+    setMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const response = await fetch("/api/admin/update-role", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ userId, role }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to update role");
+      }
+
+      setMsg({ type: "success", text: `Role updated to ${role} ✅` });
+      await load(false); // don't clear the success message
+    } catch (error) {
+      console.error("Update error:", error);
+      setMsg({ type: "error", text: error.message });
+    } finally {
+      setUpdatingId(null);
+    }
   }
 
   return (
@@ -178,8 +199,23 @@ export default function AdminUsersPage() {
         </GlowBorder>
 
         {msg && (
-          <Alert className="rounded-2xl">
-            <AlertDescription>{msg}</AlertDescription>
+          <Alert
+            variant={msg.type === "success" ? "default" : "destructive"}
+            className={cn(
+              "rounded-2xl border-2 transition-all duration-300",
+              msg.type === "success"
+                ? "border-emerald-500/20 bg-emerald-50/5 dark:bg-emerald-500/10"
+                : "border-destructive/20 bg-destructive/5 dark:bg-destructive/10"
+            )}
+          >
+            {msg.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <AlertCircle className="h-4 w-4" />
+            )}
+            <AlertDescription className="font-medium">
+              {msg.text}
+            </AlertDescription>
           </Alert>
         )}
 
@@ -195,15 +231,15 @@ export default function AdminUsersPage() {
               />
             </div>
             <div className="flex gap-2 flex-wrap">
-              {["all", "admin", "organizer", "attendee"].map((r) => (
+              {["all", "requests", "admin", "organizer", "attendee"].map((r) => (
                 <Button
                   key={r}
                   size="sm"
                   variant={roleFilter === r ? "default" : "outline"}
-                  className="rounded-2xl"
+                  className="rounded-2xl capitalize"
                   onClick={() => setRoleFilter(r)}
                 >
-                  {r}
+                  {r === "requests" ? "Pending Requests" : r}
                 </Button>
               ))}
             </div>
@@ -241,23 +277,33 @@ export default function AdminUsersPage() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {u.role !== "organizer" && (
+                    {u.role !== "organizer" && roleFilter === "requests" && (
                       <Button
                         variant="outline"
-                        className="rounded-2xl"
+                        className="rounded-2xl min-w-32"
+                        disabled={updatingId === u.id || currentUserId === u.id}
                         onClick={() => changeRole(u.id, "organizer")}
                       >
-                        <UserCheck className="mr-2 h-4 w-4" />
-                        Make Organizer
+                        {updatingId === u.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserCheck className="mr-2 h-5 w-5" />
+                        )}
+                        Approve Organizer
                       </Button>
                     )}
                     {u.role !== "attendee" && (
                       <Button
                         variant="outline"
-                        className="rounded-2xl"
+                        className="rounded-2xl min-w-32"
+                        disabled={updatingId === u.id || currentUserId === u.id}
                         onClick={() => changeRole(u.id, "attendee")}
                       >
-                        <UserX className="mr-2 h-4 w-4" />
+                        {updatingId === u.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <UserX className="mr-2 h-4 w-4" />
+                        )}
                         Make Attendee
                       </Button>
                     )}

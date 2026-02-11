@@ -19,14 +19,8 @@ import {
   RefreshCw,
   Search,
 } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
-function GlowBorder({ children }) {
-  return (
-    <div className="rounded-3xl p-px bg-linear-to-br from-primary/45 via-foreground/10 to-secondary/40">
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 function statusBadge(status) {
   if (status === "paid") return <Badge>Paid</Badge>;
@@ -247,11 +241,11 @@ export default function AdminOrdersPage() {
                       {rupees(o.amount_total_cents)}
                     </Badge>
                     {o.provider_payment_id && (
-                      <Button 
+                      <Button
                         variant="outline"
                         size="sm"
                         className='rounded-2xl'
-                        onClick={() => 
+                        onClick={() =>
                           window.open(
                             `https://dashboard.stripe.com/payments/${o.provider_payment_id}`,
                             "_blank"

@@ -33,22 +33,9 @@ import {
   BadgeCheck,
   Clock,
 } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 /* ---------- utils ---------- */
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-[1px] bg-gradient-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 function toCsv(rows) {
   const headers = [
@@ -262,7 +249,6 @@ export default function OrganizerAttendeesPage() {
         {/* Header */}
         <GlowBorder>
           <CardContent className="p-6 sm:p-8 relative overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-primary/10 via-transparent to-secondary/10" />
             <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <Button
@@ -528,8 +514,8 @@ export default function OrganizerAttendeesPage() {
                                   checkedInAt
                                     ? "bg-secondary/40"
                                     : statusIsActive
-                                    ? "bg-primary/10"
-                                    : "bg-muted/50",
+                                      ? "bg-primary/10"
+                                      : "bg-muted/50",
                                 ].join(" ")}
                               >
                                 {checkedInAt ? (

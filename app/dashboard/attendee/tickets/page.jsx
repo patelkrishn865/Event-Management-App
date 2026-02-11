@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { cn } from "@/lib/utils";
 import { QRCodeCanvas } from "qrcode.react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 import {
   ArrowRight,
@@ -24,6 +26,7 @@ import {
   CircleX,
   RotateCcw,
   RefreshCw,
+  ArrowLeft,
 } from "lucide-react";
 
 function formatDate(iso) {
@@ -71,25 +74,15 @@ function rupees(paise) {
   return `₹ ${n.toFixed(2)}`;
 }
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/40 via-foreground/10 to-secondary/35",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
-function statusBadge(status) {
+function statusBadge(status, validForDate) {
   const s = (status || "").toLowerCase();
 
+  // If active but expired, don't show "Active"
   if (s === "active") {
+    const info = getValidityInfo(validForDate);
+    if (info?.label === "Expired") return null;
+
     return (
       <Badge className="rounded-full" variant="default">
         Active
@@ -141,6 +134,7 @@ export default function MyTicketsPage() {
   const [tickets, setTickets] = useState([]);
   const [q, setQ] = useState("");
   const [toast, setToast] = useState(null);
+  const [printingTicket, setPrintingTicket] = useState(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -234,6 +228,15 @@ export default function MyTicketsPage() {
     setLoading(false);
   }
 
+  function handlePrintTicket(ticket) {
+    setPrintingTicket(ticket);
+    // Give more time for the print view to render
+    setTimeout(() => {
+      window.print();
+      setPrintingTicket(null);
+    }, 500);
+  }
+
   useEffect(() => {
     load();
   }, [router]);
@@ -259,18 +262,17 @@ export default function MyTicketsPage() {
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* background blobs */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
+      <div className={cn("pointer-events-none absolute inset-0 -z-10", printingTicket && "no-print")}>
         <div className="absolute -top-40 -left-40 h-130 w-130 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute top-10 -right-40 h-140 w-140 rounded-full bg-secondary/18 blur-3xl" />
         <div className="absolute -bottom-55 left-1/3 h-130 w-130 rounded-full bg-primary/10 blur-3xl" />
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 space-y-6">
+      <div className={cn("mx-auto max-w-6xl px-4 sm:px-6 py-8 space-y-6", printingTicket && "no-print")}>
         {/* Header */}
         <GlowBorder>
           <CardContent className="p-6 sm:p-10 relative overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-primary/10 via-transparent to-secondary/10" />
-            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div className={cn("relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between", printingTicket && "no-print")}>
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border bg-background/55 px-3 py-1 text-xs text-muted-foreground">
                   <Ticket className="h-3.5 w-3.5" />
@@ -289,16 +291,16 @@ export default function MyTicketsPage() {
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
-                  className="rounded-2xl bg-background/55"
-                  onClick={() => router.push("/events")}
+                  className="rounded-2xl bg-background/55 no-print"
+                  onClick={() => router.push("/dashboard/events")}
                 >
+                  <ArrowLeft className="ml-2 h-4 w-4" />
                   Browse Events
-                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
 
                 <Button
                   variant="outline"
-                  className="rounded-2xl bg-background/55"
+                  className="rounded-2xl bg-background/55 no-print"
                   onClick={load}
                   disabled={loading}
                 >
@@ -308,7 +310,7 @@ export default function MyTicketsPage() {
 
                 <Button
                   variant="outline"
-                  className="rounded-2xl bg-background/55"
+                  className="rounded-2xl bg-background/55 no-print"
                   onClick={() => window.print()}
                 >
                   <Printer className="mr-2 h-4 w-4" />
@@ -317,7 +319,7 @@ export default function MyTicketsPage() {
               </div>
             </div>
 
-            <div className="relative mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className={cn("relative mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between", (printingTicket) && "no-print")}>
               <div className="relative w-full">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -379,7 +381,7 @@ export default function MyTicketsPage() {
               <div className="pt-2 flex justify-center gap-2 flex-wrap">
                 <Button
                   className="rounded-2xl"
-                  onClick={() => router.push("/events")}
+                  onClick={() => router.push("/dashboard/events")}
                 >
                   Browse Events
                 </Button>
@@ -432,7 +434,7 @@ export default function MyTicketsPage() {
                         </div>
 
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          {statusBadge(status)}
+                          {statusBadge(status, t.valid_for_date)}
 
                           {t.valid_for_date && (
                             <Badge
@@ -570,24 +572,31 @@ export default function MyTicketsPage() {
                         ) : null}
                       </div>
 
-                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         <Button
                           className="rounded-2xl"
                           onClick={() =>
-                            router.push(`/events/${t?.events?.id}`)
+                            router.push(`/dashboard/events/${t?.events?.id}`)
                           }
                         >
                           View Event
-                          <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"
                           className="rounded-2xl"
                           onClick={() =>
-                            router.push(`/events/${t?.events?.id}/feedback`)
+                            router.push(`/dashboard/events/${t?.events?.id}/feedback`)
                           }
                         >
                           Feedback
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="rounded-2xl border-primary/20 text-primary hover:bg-primary/5"
+                          onClick={() => handlePrintTicket(t)}
+                        >
+                          <Printer className="mr-2 h-4 w-4" />
+                          Print
                         </Button>
                       </div>
                     </div>
@@ -598,6 +607,91 @@ export default function MyTicketsPage() {
           </div>
         )}
       </div>
+
+      {/* ── PRINT-ONLY COMPONENT ───────────────────────────── */}
+      {printingTicket && (
+        <div className="print-only block bg-white text-black min-h-screen p-4 sm:p-10">
+          <div className="max-w-3xl mx-auto border-[3px] border-black rounded-xl overflow-hidden bg-white shadow-none">
+            {/* Ticket Header */}
+            <div className="bg-black text-white p-6 flex justify-between items-center px-10">
+              <div>
+                <h1 className="text-3xl font-black uppercase tracking-tighter">
+                  Entry Pass
+                </h1>
+                <p className="text-sm opacity-80 font-medium">Official Event Ticket</p>
+              </div>
+              <div className="text-right">
+                <Ticket className="h-10 w-10 opacity-50" />
+              </div>
+            </div>
+
+            <div className="p-8 sm:p-10 space-y-8">
+              {/* Event Info */}
+              <div className="space-y-4">
+                <h2 className="text-4xl font-bold tracking-tight text-black">
+                  {printingTicket.events?.title}
+                </h2>
+
+                <div className="grid grid-cols-2 gap-6 pt-4 border-t border-gray-100">
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Date & Time</p>
+                    <p className="text-lg font-semibold">{formatDate(printingTicket.events?.starts_at)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Venue</p>
+                    <p className="text-lg font-semibold">{printingTicket.events?.location || "TBA"}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Passenger/Attendee Section (Simulated Boarding Pass style) */}
+              <div className="bg-gray-50 rounded-lg p-6 grid grid-cols-2 gap-8 border border-gray-100">
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Ticket Type</p>
+                  <p className="text-xl font-bold text-primary">{printingTicket.ticket_type?.name}</p>
+                  <p className="text-sm text-gray-500 mt-1">{rupees(printingTicket.ticket_type?.price_cents)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Ticket Code</p>
+                  <p className="text-xl font-mono font-bold">{printingTicket.ticket_code}</p>
+                </div>
+              </div>
+
+              {/* QR Code Section */}
+              <div className="flex flex-col items-center justify-center pt-6 space-y-6">
+                <div className="p-6 border-4 border-black rounded-2xl bg-white inline-block">
+                  <QRCodeCanvas
+                    value={printingTicket.qr_payload || ""}
+                    size={240}
+                    level="Q"
+                    includeMargin={true}
+                  />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-bold uppercase tracking-widest">Scan at the entrance</p>
+                  <p className="text-xs text-gray-400">Electronic validation required for entry</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer with small print */}
+            <div className="border-t-2 border-dashed border-gray-200 p-8 pt-6 mt-4">
+              <div className="flex justify-between items-end">
+                <div className="space-y-1">
+                  <p className="text-[9px] text-gray-400">Purchased on: {formatDate(printingTicket.created_at)}</p>
+                  <p className="text-[9px] text-gray-400">Order ID: {printingTicket.order?.id}</p>
+                </div>
+                <div className="text-right max-w-[200px]">
+                  <p className="text-[9px] leading-relaxed text-gray-400 italic">
+                    This ticket is valid for one-time entry for the specified date only ({formatDateOnly(printingTicket.valid_for_date)}).
+                    No refunds or exchanges.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

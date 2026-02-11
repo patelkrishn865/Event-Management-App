@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Card,
   CardContent,
   CardDescription,
   CardHeader,
@@ -53,21 +54,70 @@ import {
   Edit,
   Trash2,
   X,
+  AlertCircle,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { GlowBorder } from "@/components/ui/glow-border";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const STORAGE_BUCKET = "event-banners";
+
+const COMMON_LOCATIONS = [
+  "Surat",
+  "Ahmedabad",
+  "Mumbai",
+  "Pune",
+  "Bangalore",
+  "Delhi",
+  "Hyderabad",
+  "Jaipur",
+  "Chennai",
+  "Goa",
+];
+
+const EVENT_CATEGORIES = [
+  "Music",
+  "Technology",
+  "Business",
+  "Workshop",
+  "Social",
+  "Party",
+  "Arts",
+  "Sports",
+  "Other",
+];
 
 const eventEditSchema = z.object({
   title: z.string().min(3, "Title is required"),
   description: z.string().max(2000).optional().or(z.literal("")),
-  location: z.string().max(200).optional().or(z.literal("")),
+  location: z.string().min(1, "Location is required").max(200),
   banner_url: z.string().optional().or(z.literal("")),
-  startsAt: z.string().min(1, "Start date/time required"),
-  endsAt: z.string().optional().or(z.literal("")),
-  status: z.enum(["draft", "published", "cancelled", "completed"]),
+  startsAt: z.string().min(1, "Start date/time required").refine((val) => {
+    const start = new Date(val).getTime();
+    return start >= Date.now() - 60000;
+  }, "Start date/time cannot be in the past"),
+  endsAt: z.string().min(1, "End date/time is required"),
+  status: z.enum(["draft", "pending", "published", "cancelled", "completed"]),
+  category: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.startsAt && data.endsAt) {
+    const start = new Date(data.startsAt).getTime();
+    const end = new Date(data.endsAt).getTime();
+    if (end < start) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "End date must be after start date",
+        path: ["endsAt"],
+      });
+    }
+  }
 });
-
 const ticketTypeSchema = z.object({
   name: z.string().min(2, "Name is required"),
   price_rupees: z.coerce.number().min(1, "Min ₹1"),
@@ -75,6 +125,7 @@ const ticketTypeSchema = z.object({
   currency: z.string().min(3).max(3).default("INR"),
   sale_starts_at: z.string().optional().or(z.literal("")),
   sale_ends_at: z.string().optional().or(z.literal("")),
+  is_active: z.boolean().default(true),
 });
 
 const staffSchema = z.object({
@@ -116,20 +167,6 @@ function safeFileName(name = "") {
   return name.toLowerCase().replace(/[^a-z0-9-_.]/g, "-");
 }
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 // ── Skeleton for Header Card ───────────────────────────────────────────────
 function SkeletonHeaderCard() {
@@ -282,7 +319,23 @@ export default function OrganizerEventManagePage() {
   const { id } = useParams();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "overview");
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  useEffect(() => {
+    const tab = searchParams.get("tab") || "overview";
+    if (tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   const [loading, setLoading] = useState(true);
   const [serverMsg, setServerMsg] = useState(null);
@@ -294,6 +347,13 @@ export default function OrganizerEventManagePage() {
 
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [bannerPreview, setBannerPreview] = useState(null);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const eventForm = useForm({
     resolver: zodResolver(eventEditSchema),
@@ -305,6 +365,7 @@ export default function OrganizerEventManagePage() {
       startsAt: "",
       endsAt: "",
       status: "draft",
+      category: "Other",
     },
     mode: "onChange",
   });
@@ -312,9 +373,9 @@ export default function OrganizerEventManagePage() {
   const ticketForm = useForm({
     resolver: zodResolver(ticketTypeSchema),
     defaultValues: {
-      name: "General",
-      price_rupees: 199,
-      capacity: 100,
+      name: "",
+      price_rupees: "",
+      capacity: "",
       currency: "INR",
       sale_starts_at: "",
       sale_ends_at: "",
@@ -330,8 +391,15 @@ export default function OrganizerEventManagePage() {
   });
 
   const canSaveEvent = useMemo(
-    () => eventForm.formState.isValid && !eventForm.formState.isSubmitting,
-    [eventForm.formState.isValid, eventForm.formState.isSubmitting]
+    () =>
+      eventForm.formState.isDirty &&
+      eventForm.formState.isValid &&
+      !eventForm.formState.isSubmitting,
+    [
+      eventForm.formState.isDirty,
+      eventForm.formState.isValid,
+      eventForm.formState.isSubmitting,
+    ]
   );
 
   const canAddTicket = useMemo(
@@ -346,7 +414,7 @@ export default function OrganizerEventManagePage() {
 
   const publicEventUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/events/${id}`;
+    return `${window.location.origin}/dashboard/events/${id}`;
   }, [id]);
 
   const staffScanUrl = useMemo(() => {
@@ -361,9 +429,16 @@ export default function OrganizerEventManagePage() {
     return { totalTypes, activeTypes, staffCount };
   }, [ticketTypes, staffList]);
 
+  const isCompleted = useMemo(() => {
+    if (!event) return false;
+    const end = event.ends_at ? new Date(event.ends_at) : new Date(event.starts_at);
+    return end < new Date();
+  }, [event]);
+
   async function loadAll() {
     setLoading(true);
     setServerMsg(null);
+
 
     const { data: sessionWrap } = await supabase.auth.getSession();
     const session = sessionWrap?.session;
@@ -391,6 +466,7 @@ export default function OrganizerEventManagePage() {
       startsAt: toLocalInputValue(ev.starts_at),
       endsAt: toLocalInputValue(ev.ends_at),
       status: ev.status || "draft",
+      category: ev.category || "Other",
     });
 
     const { data: tt, error: ttErr } = await supabase
@@ -421,6 +497,7 @@ export default function OrganizerEventManagePage() {
 
   useEffect(() => {
     loadAll();
+
   }, [id]);
 
   useEffect(() => {
@@ -431,27 +508,52 @@ export default function OrganizerEventManagePage() {
 
   async function saveEvent(values) {
     setServerMsg(null);
+    const { dirtyFields } = eventForm.formState;
 
-    const startsIso = new Date(values.startsAt).toISOString();
-    const endsIso = values.endsAt
-      ? new Date(values.endsAt).toISOString()
-      : null;
+    if (Object.keys(dirtyFields).length === 0) {
+      setServerMsg("No changes detected.");
+      return;
+    }
 
-    const { error } = await supabase
-      .from("events")
-      .update({
-        title: values.title.trim(),
-        description: values.description?.trim() || null,
-        location: values.location?.trim() || null,
-        banner_url: values.banner_url?.trim() || null,
-        starts_at: startsIso,
-        ends_at: endsIso,
-        status: values.status,
-      })
-      .eq("id", id);
+    const payload = {};
+    if (dirtyFields.title) payload.title = values.title.trim();
+    if (dirtyFields.description)
+      payload.description = values.description?.trim() || null;
+    if (dirtyFields.location) payload.location = values.location?.trim() || null;
+    if (dirtyFields.banner_url)
+      payload.banner_url = values.banner_url?.trim() || null;
+    if (dirtyFields.status) payload.status = values.status;
+    if (dirtyFields.category) payload.category = values.category;
 
-    if (error) setServerMsg(error.message);
-    await loadAll();
+    if (dirtyFields.startsAt) {
+      payload.starts_at = new Date(values.startsAt).toISOString();
+    }
+    if (dirtyFields.endsAt) {
+      payload.ends_at = values.endsAt
+        ? new Date(values.endsAt).toISOString()
+        : null;
+    }
+
+    console.log("Saving event payload:", payload);
+
+    const { error } = await supabase.from("events").update(payload).eq("id", id);
+
+    if (error) {
+      if (error.code === "23503") {
+        setServerMsg(
+          "Cannot change event dates because tickets have already been issued."
+        );
+      } else if (error.code === "23514") {
+        setServerMsg(
+          "Database Out of Sync: Please run the provided SQL script in Supabase to allow 'pending' status and valid dates."
+        );
+      } else {
+        setServerMsg(error.message);
+      }
+    } else {
+      setServerMsg("Event updated successfully ✅");
+      await loadAll();
+    }
   }
 
   async function uploadBanner(file) {
@@ -466,7 +568,7 @@ export default function OrganizerEventManagePage() {
     try {
       if (bannerPreview) URL.revokeObjectURL(bannerPreview);
       setBannerPreview(URL.createObjectURL(file));
-    } catch {}
+    } catch { }
 
     setUploadingBanner(true);
 
@@ -511,7 +613,7 @@ export default function OrganizerEventManagePage() {
 
     try {
       if (bannerPreview) URL.revokeObjectURL(bannerPreview);
-    } catch {}
+    } catch { }
     setBannerPreview(null);
 
     const { error } = await supabase
@@ -571,12 +673,13 @@ export default function OrganizerEventManagePage() {
     }
 
     ticketForm.reset({
-      name: "General",
-      price_rupees: 199,
-      capacity: 100,
+      name: "",
+      price_rupees: "",
+      capacity: "",
       currency: "INR",
       sale_starts_at: "",
       sale_ends_at: "",
+      is_active: true,
     });
 
     await loadAll();
@@ -598,9 +701,9 @@ export default function OrganizerEventManagePage() {
   function cancelEdit() {
     setEditingTicketId(null);
     ticketForm.reset({
-      name: "General",
-      price_rupees: 199,
-      capacity: 100,
+      name: "",
+      price_rupees: "",
+      capacity: "",
       currency: "INR",
       sale_starts_at: "",
       sale_ends_at: "",
@@ -649,11 +752,17 @@ export default function OrganizerEventManagePage() {
       { p_email: email }
     );
 
-    if (rpcErr) return setServerMsg(rpcErr.message);
-    if (!staffUserId)
-      return setServerMsg(
-        "No user found with this email. Ask them to sign up first."
-      );
+    if (rpcErr) {
+      setToast({ message: rpcErr.message, variant: "destructive" });
+      return;
+    }
+    if (!staffUserId) {
+      setToast({
+        message: "No user found with this email. Ask them to sign up first.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const { error: insErr } = await supabase.from("event_staff").insert({
       event_id: id,
@@ -662,10 +771,15 @@ export default function OrganizerEventManagePage() {
     });
 
     if (insErr) {
-      if (insErr.code === "23505")
-        return setServerMsg("Already added as staff.");
-      return setServerMsg(insErr.message);
+      if (insErr.code === "23505") {
+        setToast({ message: "Already added as staff.", variant: "destructive" });
+        return;
+      }
+      setToast({ message: insErr.message, variant: "destructive" });
+      return;
     }
+
+    setToast({ message: "Staff assigned successfully! 🚀", variant: "default" });
 
     staffForm.reset({ email: "", staff_role: "staff" });
     await loadAll();
@@ -767,13 +881,22 @@ export default function OrganizerEventManagePage() {
         <div className="absolute top-10 -right-44 h-140 w-140 rounded-full bg-secondary/14 blur-3xl" />
         <div className="absolute -bottom-60 left-1/3 h-130 w-130 rounded-full bg-primary/10 blur-3xl" />
       </div>
-  
+
       <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
+        {event.status === "pending" && (
+          <Alert className="rounded-3xl border-amber-500/20 bg-amber-500/10 text-amber-500 animate-in fade-in slide-in-from-top-4 duration-500">
+            <ShieldCheck className="h-5 w-5" />
+            <AlertDescription className="flex items-center justify-between w-full">
+              <span className="font-medium">This event is currently awaiting Admin Approval. It will be public once approved.</span>
+              <Badge className="ml-2 bg-amber-500/20 text-amber-500 border-amber-500/30 hover:bg-amber-500/30">PENDING REVIEW</Badge>
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header */}
         <GlowBorder>
           <CardContent className="p-6 sm:p-8 relative overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-primary/10 via-transparent to-secondary/10" />
-  
+
             <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <Button
@@ -784,11 +907,11 @@ export default function OrganizerEventManagePage() {
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back
                 </Button>
-  
+
                 <h1 className="mt-4 text-3xl font-semibold tracking-tight truncate">
                   {event.title}
                 </h1>
-  
+
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   <span className="inline-flex items-center gap-2">
                     <MapPin className="h-4 w-4" />
@@ -802,10 +925,10 @@ export default function OrganizerEventManagePage() {
                       : "—"}
                   </span>
                 </div>
-  
+
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Badge className="rounded-full" variant="secondary">
-                    {event.status}
+                    {event.status === "published" && isCompleted ? "completed" : event.status}
                   </Badge>
                   <Badge className="rounded-full" variant="outline">
                     Ticket types: {stats.activeTypes}/{stats.totalTypes}
@@ -815,7 +938,7 @@ export default function OrganizerEventManagePage() {
                   </Badge>
                 </div>
               </div>
-  
+
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
@@ -827,7 +950,7 @@ export default function OrganizerEventManagePage() {
                   <Users className="mr-2 h-4 w-4" />
                   Attendees
                 </Button>
-  
+
                 <Button
                   variant="outline"
                   className="rounded-2xl bg-background/55"
@@ -838,7 +961,7 @@ export default function OrganizerEventManagePage() {
                   <MessageSquare className="mr-2 h-4 w-4" />
                   Feedback
                 </Button>
-  
+
                 <Button
                   variant="outline"
                   className="rounded-2xl bg-background/55"
@@ -847,25 +970,22 @@ export default function OrganizerEventManagePage() {
                   <ExternalLink className="mr-2 h-4 w-4" />
                   Public Page
                 </Button>
-  
-                <Button
-                  className="rounded-2xl"
-                  onClick={() => router.push(`/staff/scan/${id}`)}
-                >
-                  <ShieldCheck className="mr-2 h-4 w-4" />
-                  Staff Scan
-                </Button>
+
+                {staffList.length > 0 && !isCompleted && (
+                  <Button
+                    className="rounded-2xl"
+                    onClick={() => router.push(`/staff/scan/${id}`)}
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Staff Scan
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
         </GlowBorder>
-  
-        {serverMsg && (
-          <Alert className="rounded-2xl">
-            <AlertDescription>{serverMsg}</AlertDescription>
-          </Alert>
-        )}
-  
+
+
         {/* Tabs */}
         <GlowBorder>
           <CardContent className="p-3 sm:p-4">
@@ -874,7 +994,7 @@ export default function OrganizerEventManagePage() {
                 type="button"
                 className="rounded-2xl"
                 variant={activeTab === "overview" ? "default" : "outline"}
-                onClick={() => setActiveTab("overview")}
+                onClick={() => handleTabChange("overview")}
               >
                 Overview
               </Button>
@@ -882,7 +1002,7 @@ export default function OrganizerEventManagePage() {
                 type="button"
                 className="rounded-2xl"
                 variant={activeTab === "details" ? "default" : "outline"}
-                onClick={() => setActiveTab("details")}
+                onClick={() => handleTabChange("details")}
               >
                 Details
               </Button>
@@ -890,7 +1010,7 @@ export default function OrganizerEventManagePage() {
                 type="button"
                 className="rounded-2xl"
                 variant={activeTab === "tickets" ? "default" : "outline"}
-                onClick={() => setActiveTab("tickets")}
+                onClick={() => handleTabChange("tickets")}
               >
                 <Ticket className="mr-2 h-4 w-4" />
                 Ticket Types
@@ -899,7 +1019,7 @@ export default function OrganizerEventManagePage() {
                 type="button"
                 className="rounded-2xl"
                 variant={activeTab === "staff" ? "default" : "outline"}
-                onClick={() => setActiveTab("staff")}
+                onClick={() => handleTabChange("staff")}
               >
                 <Users className="mr-2 h-4 w-4" />
                 Staff
@@ -907,74 +1027,82 @@ export default function OrganizerEventManagePage() {
             </div>
           </CardContent>
         </GlowBorder>
-  
+
         {/* Overview */}
         {activeTab === "overview" && (
           <div className="grid gap-4 lg:grid-cols-3">
             <GlowBorder className="lg:col-span-2">
               <div className="p-4 py-6">
-                <CardHeader>
-                  <CardTitle className="text-xl">Quick links</CardTitle>
-                  <CardDescription>
-                    Share links with attendees and staff.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 my-3">
-                  <div className="rounded-2xl border bg-background/55 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="font-medium">Public event page</div>
-                      <div className="text-xs text-muted-foreground break-all">
-                        {publicEventUrl}
+                <Card className="border-0 bg-transparent shadow-none">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-xl">Quick links</CardTitle>
+                    <CardDescription>
+                      Share links with attendees and staff.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-3xl border bg-background/55 p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between hover:bg-background/60 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-foreground">Public event page</div>
+                        <div className="text-xs text-muted-foreground mt-1 truncate max-w-md">
+                          {publicEventUrl}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => copy(publicEventUrl)}
+                        >
+                          <Copy className="mr-2 h-3.5 w-3.5" />
+                          Copy
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="rounded-xl"
+                          onClick={() => window.open(publicEventUrl, "_blank")}
+                        >
+                          <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                          Open
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        className="rounded-2xl"
-                        onClick={() => copy(publicEventUrl)}
-                      >
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy
-                      </Button>
-                      <Button
-                        className="rounded-2xl"
-                        onClick={() => window.open(publicEventUrl, "_blank")}
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Open
-                      </Button>
-                    </div>
-                  </div>
-  
-                  <div className="rounded-2xl border bg-background/55 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="font-medium">Staff scan link</div>
-                      <div className="text-xs text-muted-foreground break-all">
-                        {staffScanUrl}
+
+                    {staffList.length > 0 && !isCompleted && (
+                      <div className="rounded-3xl border bg-background/55 p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between hover:bg-background/60 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-foreground">Unified event scan link</div>
+                          <div className="text-xs text-muted-foreground mt-1 truncate max-w-md">
+                            {staffScanUrl}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl"
+                            onClick={() => copy(staffScanUrl)}
+                          >
+                            <Copy className="mr-2 h-3.5 w-3.5" />
+                            Copy
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="rounded-xl"
+                            onClick={() => router.push(`/staff/scan/${id}`)}
+                          >
+                            <ShieldCheck className="mr-2 h-3.5 w-3.5" />
+                            Open
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        className="rounded-2xl"
-                        onClick={() => copy(staffScanUrl)}
-                      >
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy
-                      </Button>
-                      <Button
-                        className="rounded-2xl"
-                        onClick={() => router.push(`/staff/scan/${id}`)}
-                      >
-                        <ShieldCheck className="mr-2 h-4 w-4" />
-                        Open
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             </GlowBorder>
-  
+
             <GlowBorder>
               <div className="p-4 py-6">
                 <CardHeader>
@@ -988,13 +1116,15 @@ export default function OrganizerEventManagePage() {
                     </div>
                     <div className="mt-2">
                       {event.status ? (
-                        <Badge className="rounded-full">{event.status}</Badge>
+                        <Badge className="rounded-full">
+                          {event.status === "published" && isCompleted ? "completed" : event.status}
+                        </Badge>
                       ) : (
                         "—"
                       )}
                     </div>
                   </div>
-  
+
                   <div className="rounded-2xl border bg-background/55 p-4">
                     <div className="text-xs text-muted-foreground">
                       Ticket types
@@ -1003,7 +1133,7 @@ export default function OrganizerEventManagePage() {
                       {stats.activeTypes} active / {stats.totalTypes} total
                     </div>
                   </div>
-  
+
                   <div className="rounded-2xl border bg-background/55 p-4">
                     <div className="text-xs text-muted-foreground">
                       Staff assigned
@@ -1017,7 +1147,7 @@ export default function OrganizerEventManagePage() {
             </GlowBorder>
           </div>
         )}
-  
+
         {/* Details */}
         {activeTab === "details" && (
           <GlowBorder>
@@ -1028,7 +1158,7 @@ export default function OrganizerEventManagePage() {
                   Update details and publish when ready.
                 </CardDescription>
               </CardHeader>
-  
+
               <CardContent>
                 <Form {...eventForm}>
                   <form
@@ -1053,7 +1183,7 @@ export default function OrganizerEventManagePage() {
                           </FormItem>
                         )}
                       />
-  
+
                       <FormField
                         control={eventForm.control}
                         name="location"
@@ -1061,17 +1191,55 @@ export default function OrganizerEventManagePage() {
                           <FormItem>
                             <FormLabel>Location</FormLabel>
                             <FormControl>
-                              <Input
-                                className="rounded-2xl"
-                                value={field.value ?? ""}
-                                {...field}
-                              />
+                              <div className="relative">
+                                <Input
+                                  className="rounded-2xl"
+                                  placeholder="e.g. Mumbai"
+                                  list="location-hints-edit"
+                                  value={field.value ?? ""}
+                                  {...field}
+                                />
+                                <datalist id="location-hints-edit">
+                                  {COMMON_LOCATIONS.map((loc) => (
+                                    <option key={loc} value={loc} />
+                                  ))}
+                                </datalist>
+                              </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-  
+
+                      <FormField
+                        control={eventForm.control}
+                        name="category"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Category</FormLabel>
+                            <Select
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                              value={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger className="rounded-xl bg-background/50">
+                                  <SelectValue placeholder="Select a category" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {EVENT_CATEGORIES.map((c) => (
+                                  <SelectItem key={c} value={c}>
+                                    {c}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
                       {/* ✅ Banner Upload + Preview */}
                       <FormField
                         control={eventForm.control}
@@ -1079,7 +1247,7 @@ export default function OrganizerEventManagePage() {
                         render={({ field }) => (
                           <FormItem className="sm:col-span-2">
                             <FormLabel>Banner</FormLabel>
-  
+
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="rounded-2xl border bg-background/55 p-3">
                                 <div className="flex items-center gap-2">
@@ -1091,7 +1259,7 @@ export default function OrganizerEventManagePage() {
                                 <p className="text-xs text-muted-foreground mt-1">
                                   JPG/PNG/WebP • max 5MB
                                 </p>
-  
+
                                 <Input
                                   type="file"
                                   accept="image/*"
@@ -1103,7 +1271,7 @@ export default function OrganizerEventManagePage() {
                                     e.target.value = "";
                                   }}
                                 />
-  
+
                                 <div className="mt-3 flex gap-2">
                                   <Button
                                     type="button"
@@ -1117,7 +1285,7 @@ export default function OrganizerEventManagePage() {
                                   >
                                     Clear
                                   </Button>
-  
+
                                   <Button
                                     type="button"
                                     className="rounded-2xl"
@@ -1128,19 +1296,19 @@ export default function OrganizerEventManagePage() {
                                       : "Auto upload"}
                                   </Button>
                                 </div>
-  
+
                                 {field.value ? (
                                   <p className="mt-3 text-[11px] text-muted-foreground break-all">
                                     Stored URL: {field.value}
                                   </p>
                                 ) : null}
                               </div>
-  
+
                               <div className="rounded-2xl border bg-background/55 p-3">
                                 <div className="text-sm font-medium">
                                   Preview
                                 </div>
-  
+
                                 {bannerPreview || field.value ? (
                                   <div className="mt-3 rounded-2xl overflow-hidden border">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1157,12 +1325,12 @@ export default function OrganizerEventManagePage() {
                                 )}
                               </div>
                             </div>
-  
+
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-  
+
                       <FormField
                         control={eventForm.control}
                         name="description"
@@ -1180,7 +1348,7 @@ export default function OrganizerEventManagePage() {
                           </FormItem>
                         )}
                       />
-  
+
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:col-span-2">
                         <FormField
                           control={eventForm.control}
@@ -1200,13 +1368,13 @@ export default function OrganizerEventManagePage() {
                             </FormItem>
                           )}
                         />
-  
+
                         <FormField
                           control={eventForm.control}
                           name="endsAt"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Ends at (optional)</FormLabel>
+                              <FormLabel>Ends at</FormLabel>
                               <FormControl>
                                 <Input
                                   className="rounded-2xl"
@@ -1219,7 +1387,7 @@ export default function OrganizerEventManagePage() {
                             </FormItem>
                           )}
                         />
-  
+
                         <FormField
                           control={eventForm.control}
                           name="status"
@@ -1232,6 +1400,7 @@ export default function OrganizerEventManagePage() {
                                   className="h-11 w-full rounded-2xl border bg-background px-3 text-sm"
                                 >
                                   <option value="draft">Draft</option>
+                                  <option value="pending">Pending Approval</option>
                                   <option value="published">Published</option>
                                   <option value="cancelled">Cancelled</option>
                                   <option value="completed">Completed</option>
@@ -1242,28 +1411,50 @@ export default function OrganizerEventManagePage() {
                           )}
                         />
                       </div>
-  
-                      <div className="sm:col-span-2 flex flex-wrap gap-2">
-                        <Button
-                          type="submit"
-                          disabled={!canSaveEvent}
-                          className="rounded-2xl"
-                        >
-                          <Save className="mr-2 h-4 w-4" />
-                          {eventForm.formState.isSubmitting
-                            ? "Saving..."
-                            : "Save changes"}
-                        </Button>
-  
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="rounded-2xl"
-                          onClick={() => window.open(publicEventUrl, "_blank")}
-                        >
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          Preview public page
-                        </Button>
+
+                      <div className="sm:col-span-2 space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="submit"
+                            disabled={!canSaveEvent}
+                            className="rounded-2xl"
+                          >
+                            <Save className="mr-2 h-4 w-4" />
+                            {eventForm.formState.isSubmitting
+                              ? "Saving..."
+                              : "Save changes"}
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-2xl"
+                            onClick={() => window.open(publicEventUrl, "_blank")}
+                          >
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            Preview public page
+                          </Button>
+                        </div>
+
+                        {serverMsg && (
+                          <div className="pt-2">
+                            <Alert
+                              variant={
+                                serverMsg.includes("successfully")
+                                  ? "default"
+                                  : "destructive"
+                              }
+                              className="rounded-2xl border-destructive/20 bg-destructive/5 dark:bg-destructive/10 animate-in fade-in slide-in-from-top-2 duration-300"
+                            >
+                              {!serverMsg.includes("successfully") && (
+                                <AlertCircle className="h-4 w-4" />
+                              )}
+                              <AlertDescription className="font-medium text-sm leading-relaxed">
+                                {serverMsg}
+                              </AlertDescription>
+                            </Alert>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </form>
@@ -1272,7 +1463,7 @@ export default function OrganizerEventManagePage() {
             </div>
           </GlowBorder>
         )}
-  
+
         {/* Ticket Types */}
         {activeTab === "tickets" && (
           <GlowBorder>
@@ -1283,7 +1474,7 @@ export default function OrganizerEventManagePage() {
                   Create and manage ticket tiers.
                 </CardDescription>
               </CardHeader>
-  
+
               <CardContent className="space-y-6">
                 {/* Add / Edit Form */}
                 <Form {...ticketForm}>
@@ -1308,7 +1499,7 @@ export default function OrganizerEventManagePage() {
                         </FormItem>
                       )}
                     />
-  
+
                     <FormField
                       control={ticketForm.control}
                       name="price_rupees"
@@ -1322,13 +1513,14 @@ export default function OrganizerEventManagePage() {
                               min={0}
                               step={1}
                               {...field}
+                              placeholder="e.g. 499"
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-  
+
                     <FormField
                       control={ticketForm.control}
                       name="capacity"
@@ -1341,13 +1533,14 @@ export default function OrganizerEventManagePage() {
                               type="number"
                               min={0}
                               {...field}
+                              placeholder="e.g. 100"
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-  
+
                     <FormField
                       control={ticketForm.control}
                       name="sale_starts_at"
@@ -1365,7 +1558,7 @@ export default function OrganizerEventManagePage() {
                         </FormItem>
                       )}
                     />
-  
+
                     <FormField
                       control={ticketForm.control}
                       name="sale_ends_at"
@@ -1383,7 +1576,7 @@ export default function OrganizerEventManagePage() {
                         </FormItem>
                       )}
                     />
-  
+
                     <FormField
                       control={ticketForm.control}
                       name="is_active"
@@ -1391,7 +1584,7 @@ export default function OrganizerEventManagePage() {
                         <FormItem className="flex items-center ml-4 gap-2 pt-6 md:col-span-1">
                           <FormControl>
                             <Checkbox
-                              checked
+                              checked={field.value}
                               onCheckedChange={field.onChange}
                             />
                           </FormControl>
@@ -1399,7 +1592,7 @@ export default function OrganizerEventManagePage() {
                         </FormItem>
                       )}
                     />
-  
+
                     <div className="md:col-span-3 lg:col-span-3 flex flex-wrap gap-3 pt-2">
                       <Button
                         type="submit"
@@ -1410,7 +1603,7 @@ export default function OrganizerEventManagePage() {
                           ? "Update Ticket Type"
                           : "Add Ticket Type"}
                       </Button>
-  
+
                       {editingTicketId && (
                         <Button
                           type="button"
@@ -1425,139 +1618,139 @@ export default function OrganizerEventManagePage() {
                     </div>
                   </form>
                 </Form>
-  
+
                 <Separator className="my-6" />
-  
+
                 {ticketTypes.length === 0 ? (
                   <div className="text-center py-10 text-muted-foreground">
                     No ticket types created yet. Add one above.
                   </div>
                 ) : (
                   <GlowBorder>
-  <div className="rounded-3xl bg-card/80 backdrop-blur overflow-hidden">
-    <Table>
-      <TableHeader>
-        <TableRow className="border-b bg-background/40">
-          <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
-            Type
-          </TableHead>
-          <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
-            Price
-          </TableHead>
-          <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
-            Capacity
-          </TableHead>
-          <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
-            Sale Period
-          </TableHead>
-          <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
-            Status
-          </TableHead>
-          <TableHead className="text-right text-xs font-medium text-muted-foreground py-4 pr-6">
-            Actions
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-  
-      <TableBody>
-        {ticketTypes.map((t) => (
-          <TableRow
-            key={t.id}
-            className="border-b last:border-none hover:bg-accent/20 transition"
-          >
-            {/* Type */}
-            <TableCell className="text-center font-medium py-5">
-              {t.name}
-            </TableCell>
-  
-            {/* Price */}
-            <TableCell className="text-center py-5 font-medium">
-              {formatMoneyINRPaise(t.price_cents)}
-            </TableCell>
-  
-            {/* Capacity */}
-            <TableCell className="text-center py-5 text-sm">
-              {t.capacity === 0 ? (
-                <span className="italic text-muted-foreground">Unlimited</span>
-              ) : (
-                t.capacity
-              )}
-            </TableCell>
-  
-            {/* Sale period */}
-            <TableCell className="text-center py-5 text-xs text-muted-foreground leading-relaxed">
-              {t.sale_starts_at || t.sale_ends_at ? (
-                <>
-                  {t.sale_starts_at && (
-                    <div>Starts: {formatDateTime(t.sale_starts_at)}</div>
-                  )}
-                  {t.sale_starts_at && t.sale_ends_at && (
-                    <div className="opacity-40 my-0.5">—</div>
-                  )}
-                  {t.sale_ends_at && (
-                    <div>Ends: {formatDateTime(t.sale_ends_at)}</div>
-                  )}
-                </>
-              ) : (
-                <span className="italic opacity-70">Always open</span>
-              )}
-            </TableCell>
-  
-            {/* Status */}
-            <TableCell className="text-center py-5">
-              <Badge
-                variant={t.is_active ? "default" : "secondary"}
-                className="rounded-full px-3 py-1 text-xs"
-              >
-                {t.is_active ? "Active" : "Inactive"}
-              </Badge>
-            </TableCell>
-  
-            {/* Actions */}
-            <TableCell className="text-right py-5 pr-6">
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-2xl bg-background/60"
-                  onClick={() => startEditTicket(t)}
-                >
-                  <Edit className="h-3.5 w-3.5 mr-1.5" />
-                  Edit
-                </Button>
-  
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-2xl bg-background/60"
-                  onClick={() => toggleTicketActive(t)}
-                >
-                  {t.is_active ? "Disable" : "Enable"}
-                </Button>
-  
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="rounded-2xl bg-background/60 text-destructive hover:bg-destructive/10"
-                  onClick={() => deleteTicketType(t.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  </div>
-  </GlowBorder>
-  
+                    <div className="rounded-3xl bg-card/80 backdrop-blur overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b bg-background/40">
+                            <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
+                              Type
+                            </TableHead>
+                            <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
+                              Price
+                            </TableHead>
+                            <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
+                              Capacity
+                            </TableHead>
+                            <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
+                              Sale Period
+                            </TableHead>
+                            <TableHead className="text-center text-xs font-medium text-muted-foreground py-4">
+                              Status
+                            </TableHead>
+                            <TableHead className="text-right text-xs font-medium text-muted-foreground py-4 pr-6">
+                              Actions
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+
+                        <TableBody>
+                          {ticketTypes.map((t) => (
+                            <TableRow
+                              key={t.id}
+                              className="border-b last:border-none hover:bg-accent/20 transition"
+                            >
+                              {/* Type */}
+                              <TableCell className="text-center font-medium py-5">
+                                {t.name}
+                              </TableCell>
+
+                              {/* Price */}
+                              <TableCell className="text-center py-5 font-medium">
+                                {formatMoneyINRPaise(t.price_cents)}
+                              </TableCell>
+
+                              {/* Capacity */}
+                              <TableCell className="text-center py-5 text-sm">
+                                {t.capacity === 0 ? (
+                                  <span className="italic text-muted-foreground">Unlimited</span>
+                                ) : (
+                                  t.capacity
+                                )}
+                              </TableCell>
+
+                              {/* Sale period */}
+                              <TableCell className="text-center py-5 text-xs text-muted-foreground leading-relaxed">
+                                {t.sale_starts_at || t.sale_ends_at ? (
+                                  <>
+                                    {t.sale_starts_at && (
+                                      <div>Starts: {formatDateTime(t.sale_starts_at)}</div>
+                                    )}
+                                    {t.sale_starts_at && t.sale_ends_at && (
+                                      <div className="opacity-40 my-0.5">—</div>
+                                    )}
+                                    {t.sale_ends_at && (
+                                      <div>Ends: {formatDateTime(t.sale_ends_at)}</div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="italic opacity-70">Always open</span>
+                                )}
+                              </TableCell>
+
+                              {/* Status */}
+                              <TableCell className="text-center py-5">
+                                <Badge
+                                  variant={t.is_active ? "default" : "secondary"}
+                                  className="rounded-full px-3 py-1 text-xs"
+                                >
+                                  {t.is_active ? "Active" : "Inactive"}
+                                </Badge>
+                              </TableCell>
+
+                              {/* Actions */}
+                              <TableCell className="text-right py-5 pr-6">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="rounded-2xl bg-background/60"
+                                    onClick={() => startEditTicket(t)}
+                                  >
+                                    <Edit className="h-3.5 w-3.5 mr-1.5" />
+                                    Edit
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="rounded-2xl bg-background/60"
+                                    onClick={() => toggleTicketActive(t)}
+                                  >
+                                    {t.is_active ? "Disable" : "Enable"}
+                                  </Button>
+
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="rounded-2xl bg-background/60 text-destructive hover:bg-destructive/10"
+                                    onClick={() => deleteTicketType(t.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </GlowBorder>
+
                 )}
               </CardContent>
             </div>
           </GlowBorder>
         )}
-  
+
         {/* Staff */}
         {activeTab === "staff" && (
           <GlowBorder>
@@ -1568,7 +1761,7 @@ export default function OrganizerEventManagePage() {
                   Assign staff who can scan/check-in tickets.
                 </CardDescription>
               </CardHeader>
-  
+
               <CardContent className="space-y-4 my-3">
                 <Form {...staffForm}>
                   <form
@@ -1593,7 +1786,7 @@ export default function OrganizerEventManagePage() {
                         </FormItem>
                       )}
                     />
-  
+
                     <FormField
                       control={staffForm.control}
                       name="staff_role"
@@ -1613,7 +1806,7 @@ export default function OrganizerEventManagePage() {
                         </FormItem>
                       )}
                     />
-  
+
                     <div className="flex items-end">
                       <Button
                         type="submit"
@@ -1627,9 +1820,27 @@ export default function OrganizerEventManagePage() {
                     </div>
                   </form>
                 </Form>
-  
+
+                {toast && (
+                  <div className="mt-4">
+                    <Alert
+                      variant={toast.variant === "destructive" ? "destructive" : "default"}
+                      className="rounded-2xl border-destructive/20 bg-destructive/5 dark:bg-destructive/10 animate-in fade-in slide-in-from-top-2 duration-300"
+                    >
+                      {toast.variant === "destructive" ? (
+                        <AlertCircle className="h-4 w-4" />
+                      ) : (
+                        <ShieldCheck className="h-4 w-4 text-primary" />
+                      )}
+                      <AlertDescription className="font-medium text-sm leading-relaxed ml-2">
+                        {toast.message}
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+
                 <Separator />
-  
+
                 {staffList.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No staff assigned yet.
@@ -1665,29 +1876,32 @@ export default function OrganizerEventManagePage() {
                     ))}
                   </div>
                 )}
-  
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={() => copy(staffScanUrl)}
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy Staff Scan Link
-                  </Button>
-                  <Button
-                    className="rounded-2xl"
-                    onClick={() => router.push(`/staff/scan/${id}`)}
-                  >
-                    <ShieldCheck className="mr-2 h-4 w-4" />
-                    Open Scanner
-                  </Button>
-                </div>
+
+                {staffList.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl"
+                      onClick={() => copy(staffScanUrl)}
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy Unified Scan Link
+                    </Button>
+                    <Button
+                      className="rounded-2xl"
+                      onClick={() => router.push(`/staff/scan/${id}`)}
+                    >
+                      <ShieldCheck className="mr-2 h-4 w-4" />
+                      Open Scanner
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </div>
           </GlowBorder>
         )}
       </div>
+
     </div>
   );
 }

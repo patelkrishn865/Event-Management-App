@@ -25,8 +25,10 @@ import {
   ArrowLeft,
   ReceiptIndianRupee,
   AlertCircle,
+  LayoutDashboard,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 // ── Form Schema ─────────────────────────────────────────────────────────
 const buyerSchema = z.object({
@@ -50,20 +52,6 @@ function rupees(paise) {
   return `₹ ${n.toFixed(2)}`;
 }
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/40 via-foreground/10 to-secondary/35",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 // ── Real-time countdown in days + HH:mm:ss ──────────────────────────────
 function getCountdown(targetDate) {
@@ -93,8 +81,12 @@ function getCountdown(targetDate) {
   return days > 0 ? `${days}d ${timeStr}` : timeStr;
 }
 
-function getTicketStatus(t) {
+function getTicketStatus(t, isEventCompleted) {
   const now = Date.now();
+
+  if (isEventCompleted) {
+    return { label: "Event ended", variant: "secondary" };
+  }
 
   const start = t.sale_starts_at ? new Date(t.sale_starts_at).getTime() : null;
   const end = t.sale_ends_at ? new Date(t.sale_ends_at).getTime() : null;
@@ -124,8 +116,10 @@ function getTicketStatus(t) {
   return { label: "On sale", variant: "default" };
 }
 
-function canBuyTicket(t) {
+function canBuyTicket(t, isEventCompleted) {
   const now = Date.now();
+  if (isEventCompleted) return false;
+
   const start = t.sale_starts_at ? new Date(t.sale_starts_at).getTime() : null;
   const end = t.sale_ends_at ? new Date(t.sale_ends_at).getTime() : null;
 
@@ -217,6 +211,7 @@ export default function EventDetailPage() {
   const [msg, setMsg] = useState(null);
   const [eventDays, setEventDays] = useState([]);
   const [selectedDayId, setSelectedDayId] = useState(null);
+  const [userRole, setUserRole] = useState(null);
 
   // Force re-render every second for live countdown
   const [, forceUpdate] = useState(0);
@@ -225,6 +220,12 @@ export default function EventDetailPage() {
     return () => clearInterval(interval);
   }, []);
 
+  const isCompleted = useMemo(() => {
+    if (!event) return false;
+    const end = event.ends_at ? new Date(event.ends_at) : new Date(event.starts_at);
+    return end < new Date();
+  }, [event]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -232,63 +233,73 @@ export default function EventDetailPage() {
       setLoading(true);
       setMsg(null);
 
-      const { data: ev, error: eErr } = await supabase
-        .from("events")
-        .select("id,title,description,location,starts_at,ends_at,status,banner_url")
-        .eq("id", id)
-        .single();
+      try {
+        // Fetch event data from API route (uses supabaseAdmin to bypass RLS)
+        const res = await fetch(`/api/events/${id}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || "Failed to fetch event");
+        }
+        const ev = await res.json();
 
-      if (!mounted) return;
+        if (!mounted) return;
 
-      if (eErr) {
-        setMsg(eErr.message);
-        setLoading(false);
-        return;
-      }
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", sessionData.session.user.id)
+            .single();
+          if (profile) setUserRole(profile.role);
+        }
 
-      if (ev.status !== "published") {
-        setMsg("This event is not published.");
-        setLoading(false);
-        return;
-      }
+        if (ev.status !== "published") {
+          setMsg("This event is not published.");
+          return;
+        }
 
-      const { data: days, error: dErr } = await supabase
-        .from("event_days")
-        .select("id, day_date, label")
-        .eq("event_id", id)
-        .order("day_date", { ascending: true });
+        const { data: days, error: dErr } = await supabase
+          .from("event_days")
+          .select("id, day_date, label")
+          .eq("event_id", id)
+          .order("day_date", { ascending: true });
 
-      if (dErr) setMsg(dErr.message);
+        if (dErr) setMsg(dErr.message);
 
-      setEventDays(days || []);
-      setSelectedDayId(days?.[0]?.id || null);
+        setEventDays(days || []);
+        setSelectedDayId(days?.[0]?.id || null);
 
-      const { data: tt, error: tErr } = await supabase
-        .from("ticket_type_availability")
-        .select(
+        const { data: tt, error: tErr } = await supabase
+          .from("ticket_type_availability")
+          .select(
+            `
+            id,
+            name,
+            price_cents,
+            currency,
+            capacity,
+            remaining,
+            is_active,
+            is_on_sale,
+            sale_starts_at,
+            sale_ends_at,
+            created_at
           `
-          id,
-          name,
-          price_cents,
-          currency,
-          capacity,
-          remaining,
-          is_active,
-          is_on_sale,
-          sale_starts_at,
-          sale_ends_at,
-          created_at
-        `
-        )
-        .eq("event_id", id)
-        .eq("is_active", true)
-        .order("created_at", { ascending: true });
+          )
+          .eq("event_id", id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true });
 
-      if (tErr) setMsg(tErr.message);
+        if (tErr) setMsg(tErr.message);
 
-      setEvent(ev);
-      setTypes(tt || []);
-      setLoading(false);
+        setEvent(ev);
+        setTypes(tt || []);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
     }
 
     load();
@@ -297,6 +308,13 @@ export default function EventDetailPage() {
       mounted = false;
     };
   }, [id]);
+
+  const isEventCompleted = useMemo(() => {
+    if (!event) return false;
+    const now = new Date();
+    const eventEnd = event.ends_at ? new Date(event.ends_at) : new Date(event.starts_at);
+    return now > eventEnd;
+  }, [event]);
 
   const items = useMemo(() => {
     return (types || [])
@@ -325,16 +343,17 @@ export default function EventDetailPage() {
 
   const canCheckout = useMemo(() => {
     return (
+      !isEventCompleted &&
       !!selectedDayId &&
       totalQty > 0 &&
       form.formState.isValid &&
       !form.formState.isSubmitting &&
       items.every((it) => {
         const t = types.find((x) => x.id === it.ticket_type_id);
-        return t && canBuyTicket(t) && (t.capacity === 0 || it.quantity <= t.remaining);
+        return t && canBuyTicket(t, isEventCompleted) && (t.capacity === 0 || it.quantity <= t.remaining);
       })
     );
-  }, [selectedDayId, totalQty, form.formState.isValid, form.formState.isSubmitting, items, types]);
+  }, [selectedDayId, totalQty, form.formState.isValid, form.formState.isSubmitting, items, types, isEventCompleted]);
 
   function setTypeQty(typeId, next) {
     const t = types.find((x) => x.id === typeId);
@@ -371,7 +390,7 @@ export default function EventDetailPage() {
         buyer_email: values.buyer_email,
         buyer_phone: values.buyer_phone || null,
         success_url: `${window.location.origin}/payment/success`,
-        cancel_url: `${window.location.origin}/events/${id}`,
+        cancel_url: `${window.location.origin}/dashboard/events/${id}`,
       }),
     });
 
@@ -395,33 +414,30 @@ export default function EventDetailPage() {
           {/* top actions skeleton */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Skeleton className="h-10 w-28 rounded-2xl" />
-            <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-10 w-32 rounded-2xl" />
-              <Skeleton className="h-10 w-32 rounded-2xl" />
-            </div>
           </div>
 
-          {/* hero skeleton – matches new tall banner + compact panel */}
+          {/* hero skeleton – redesigned for better visibility */}
           <GlowBorder>
-            <div className="relative overflow-hidden rounded-3xl">
-              <div className="relative h-[65vh] min-h-[480px] w-full bg-muted animate-pulse">
+            <div className="flex flex-col bg-background/50 rounded-3xl overflow-hidden shadow-2xl">
+              {/* Banner Area */}
+              <div className="relative h-[45vh] min-h-[320px] w-full bg-muted animate-pulse">
                 <Skeleton className="h-full w-full" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+              </div>
 
-                {/* Floating panel skeleton */}
-                <div className="absolute bottom-6 sm:bottom-8 left-6 sm:left-8 right-6 sm:right-8 max-w-3xl">
-                  <div className="bg-black/40 backdrop-blur-lg rounded-xl p-5 sm:p-6 border border-white/10 shadow-xl space-y-4">
-                    <div className="flex gap-2">
-                      <Skeleton className="h-5 w-20 rounded-full" />
-                      <Skeleton className="h-5 w-28 rounded-full" />
-                    </div>
-                    <Skeleton className="h-10 w-4/5 rounded-lg" />
-                    <div className="flex flex-wrap gap-4">
-                      <Skeleton className="h-5 w-40" />
-                      <Skeleton className="h-5 w-56" />
-                    </div>
-                    <Skeleton className="h-20 w-full rounded-md" />
+              {/* Text Area Skeleton */}
+              <div className="relative -mt-16 mx-6 sm:mx-8 mb-8">
+                <div className="bg-background/95 backdrop-blur-xl rounded-2xl p-6 sm:p-8 border shadow-2xl space-y-4">
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                    <Skeleton className="h-5 w-28 rounded-full" />
                   </div>
+                  <Skeleton className="h-10 w-4/5 rounded-lg" />
+                  <div className="flex flex-wrap gap-4">
+                    <Skeleton className="h-5 w-40" />
+                    <Skeleton className="h-5 w-56" />
+                  </div>
+                  <Skeleton className="h-16 w-full rounded-md" />
                 </div>
               </div>
             </div>
@@ -487,7 +503,7 @@ export default function EventDetailPage() {
         <Button
           variant="outline"
           className="rounded-2xl"
-          onClick={() => router.push("/events")}
+          onClick={() => router.push("/dashboard/events")}
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to events
@@ -507,8 +523,33 @@ export default function EventDetailPage() {
 
       <div className="mx-auto max-w-6xl px-6 py-8 space-y-6">
         {/* top actions */}
+        <div className="inline-flex items-center gap-2 rounded-2xl border bg-background/55 px-3 py-2 text-xs text-muted-foreground w-fit">
+          <LayoutDashboard className="h-4 w-4" />
+          <span className="font-medium cursor-pointer hover:text-foreground transition-colors" onClick={() => router.push("/dashboard")}>Dashboard</span>
+          <span className="text-muted-foreground">•</span>
+          <span className="font-medium cursor-pointer hover:text-foreground transition-colors" onClick={() => router.push("/dashboard/events")}>Events</span>
+          <span className="text-muted-foreground">•</span>
+          <span className="font-medium text-foreground truncate max-w-[150px]">{event?.title || "Details"}</span>
+          {userRole && (
+            <>
+              <span className="text-muted-foreground">•</span>
+              <Badge className="rounded-full" variant="secondary">{userRole}</Badge>
+            </>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Button variant="outline" className="rounded-2xl" onClick={() => router.push("/events")}>
+          <Button
+            variant="outline"
+            className="rounded-2xl"
+            onClick={() => {
+              if (userRole === "admin") {
+                router.push("/dashboard/admin/events");
+              } else {
+                router.push("/dashboard/events");
+              }
+            }}
+          >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
@@ -519,81 +560,107 @@ export default function EventDetailPage() {
               My Tickets
             </Button>
 
-            <Button variant="outline" className="rounded-2xl" onClick={() => router.push(`/events/${id}/feedback`)}>
-              <ShieldCheck className="mr-2 h-4 w-4" />
-              Submit Feedback
-            </Button>
+            {event?.starts_at && (new Date() > (event.ends_at ? new Date(event.ends_at) : new Date(event.starts_at))) && (
+              <Button variant="outline" className="rounded-2xl" onClick={() => router.push(`/dashboard/events/${id}/feedback`)}>
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Submit Feedback
+              </Button>
+            )}
           </div>
         </div>
 
-        {/* hero */}
-        {/* hero – clean & balanced redesign */}
-<GlowBorder>
-  <div className="relative overflow-hidden rounded-3xl">
-    {/* Banner – maximized visibility */}
-    <div className="relative h-[65vh] min-h-[480px] w-full bg-muted overflow-hidden">
-      {event.banner_url ? (
-        <img
-          src={event.banner_url}
-          alt={event.title}
-          className="h-full w-full object-cover object-center"
-        />
-      ) : (
-        <div className="h-full w-full bg-gradient-to-br from-primary/10 via-background/40 to-secondary/10 flex items-center justify-center">
-          <span className="text-5xl opacity-10">🎟️</span>
-        </div>
-      )}
+        {/* hero – balanced & clear redesign */}
+        <GlowBorder>
+          <div className="flex flex-col bg-background/50 rounded-3xl overflow-hidden shadow-2xl border">
+            {/* Banner – full visibility */}
+            <div className="relative h-[45vh] min-h-[320px] w-full bg-muted overflow-hidden">
+              {event.banner_url ? (
+                <img
+                  src={event.banner_url}
+                  alt={event.title}
+                  className="h-full w-full object-cover object-center"
+                />
+              ) : (
+                <div className="h-full w-full bg-gradient-to-br from-primary/10 via-background/40 to-secondary/10 flex items-center justify-center">
+                  <span className="text-6xl opacity-20">🎟️</span>
+                </div>
+              )}
 
-      {/* Extremely subtle bottom fade – banner stays sharp */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent pointer-events-none" />
-
-      {/* Floating text panel – compact & elegant */}
-      <div className="absolute bottom-6 sm:bottom-8 left-6 sm:left-8 right-6 sm:right-8 max-w-3xl">
-        <div className="bg-black/40 backdrop-blur-lg rounded-xl p-5 sm:p-6 border border-white/10 shadow-xl">
-          {/* Badges – smaller & subtle */}
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            <Badge className="rounded-full bg-white/20 text-white border-white/30 text-xs px-3 py-1">
-              Published
-            </Badge>
-            <Badge className="rounded-full bg-white/20 text-white border-white/30 text-xs px-3 py-1">
-              {formatDate(event.starts_at)}
-            </Badge>
-          </div>
-
-          {/* Title – clean and not overwhelming */}
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white drop-shadow-[0_3px_10px_rgba(0,0,0,0.85)] leading-tight">
-            {event.title}
-          </h1>
-
-          {/* Meta – smaller, elegant */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.7)]">
-            <div className="inline-flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-white/80" />
-              <span className="truncate font-medium">{event.location || "—"}</span>
+              {/* Subtle overlay to soften top of image if needed */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
             </div>
 
-            <div className="hidden sm:block text-white/50">•</div>
+            {/* Info Card – overlapping for style but not hiding image content */}
+            <div className="relative -mt-16 mx-6 sm:mx-8 mb-8 z-10">
+              <div className="bg-background/95 backdrop-blur-xl rounded-2xl p-6 sm:p-10 border shadow-2xl">
+                {/* Badges – clean & readable */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <Badge className="rounded-full bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors text-xs px-3 py-1">
+                    {event.category || "Others"}
+                  </Badge>
+                  <Badge className={`rounded-full ${isCompleted ? 'bg-cyan-500/10 text-cyan-600 border-cyan-500/20' : 'bg-green-500/10 text-green-600 border-green-500/20'} text-xs px-3 py-1`}>
+                    {isCompleted ? "Completed" : "Published"}
+                  </Badge>
+                  <Badge variant="outline" className="rounded-full text-xs px-3 py-1 bg-muted/30">
+                    <CalendarDays className="mr-1.5 h-3.5 w-3.5" />
+                    {formatDate(event.starts_at)}
+                  </Badge>
+                </div>
 
-            <div className="inline-flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-white/80" />
-              <span className="font-medium">
-                {formatDate(event.starts_at)}
-                {event.ends_at ? ` → ${formatDate(event.ends_at)}` : ""}
-              </span>
+                {/* Title – prominent and clear */}
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
+                  {event.title}
+                </h1>
+
+                {/* Meta details */}
+                <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-muted-foreground border-t pt-6">
+                  <div className="inline-flex items-center gap-2.5">
+                    <div className="p-2 rounded-full bg-primary/10">
+                      <MapPin className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider font-bold opacity-50">Location</div>
+                      <div className="font-semibold text-foreground">{event.location || "—"}</div>
+                    </div>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2.5">
+                    <div className="p-2 rounded-full bg-secondary/20">
+                      <CalendarDays className="h-4 w-4 text-secondary-foreground" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider font-bold opacity-50">Schedule</div>
+                      <div className="font-semibold text-foreground">
+                        {formatDate(event.starts_at)}
+                        {event.ends_at ? ` → ${formatDate(event.ends_at)}` : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2.5">
+                    <div className="p-2 rounded-full bg-accent/20">
+                      <ShieldCheck className="h-4 w-4 text-accent-foreground" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider font-bold opacity-50">Organizer</div>
+                      <div className="font-semibold text-foreground">{event.organizer?.full_name || "Unknown"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                {event.description && (
+                  <div className="mt-8">
+                    <div className="text-[10px] uppercase tracking-wider font-bold opacity-50 mb-2">About this event</div>
+                    <p className="text-base text-muted-foreground leading-relaxed">
+                      {event.description}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-
-          {/* Description – readable, not too large */}
-          {event.description && (
-            <p className="mt-4 text-sm sm:text-base text-white/90 leading-relaxed drop-shadow-[0_1px_5px_rgba(0,0,0,0.7)]">
-              {event.description}
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  </div>
-</GlowBorder>
+        </GlowBorder>
 
         {msg && (
           <Alert className="rounded-2xl">
@@ -618,6 +685,15 @@ export default function EventDetailPage() {
                   {totalQty} selected
                 </Badge>
               </div>
+
+              {isEventCompleted && (
+                <Alert className="rounded-2xl border-orange-500/20 bg-orange-500/5">
+                  <AlertCircle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-700 font-medium">
+                    This event has ended. Tickets are no longer available for purchase.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <Separator />
 
@@ -650,8 +726,8 @@ export default function EventDetailPage() {
                   {types.map((t) => {
                     const v = Number(qty[t.id] || 0);
                     const price = Number(t.price_cents || 0);
-                    const status = getTicketStatus(t);
-                    const canBuy = canBuyTicket(t);
+                    const status = getTicketStatus(t, isEventCompleted);
+                    const canBuy = canBuyTicket(t, isEventCompleted);
 
                     return (
                       <div

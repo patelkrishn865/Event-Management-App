@@ -6,21 +6,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CheckCircle2, ArrowRight, Ticket, Sparkles } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition-all duration-300",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur-md">{children}</div>
-    </div>
-  );
-}
 
 export default function PaymentSuccessPage() {
   const router = useRouter();
@@ -87,7 +74,7 @@ export default function PaymentSuccessPage() {
                 variant="outline"
                 size="lg"
                 className="rounded-2xl px-8"
-                onClick={() => router.push("/events")}
+                onClick={() => router.push("/dashboard/events")}
               >
                 Browse More Events
                 <ArrowRight className="ml-2 h-5 w-5" />

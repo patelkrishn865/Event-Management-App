@@ -64,7 +64,7 @@ export async function POST(req) {
 
     const { data: event, error: eErr } = await sb
       .from("events")
-      .select("id,title,status")
+      .select("id,title,status,starts_at,ends_at")
       .eq("id", event_id)
       .single();
 
@@ -78,6 +78,15 @@ export async function POST(req) {
     if (event.status !== "published") {
       return NextResponse.json(
         { error: "Event not published" },
+        { status: 400 }
+      );
+    }
+
+    const now = new Date();
+    const eventEnd = event.ends_at ? new Date(event.ends_at) : new Date(event.starts_at);
+    if (now > eventEnd) {
+      return NextResponse.json(
+        { error: "Event has already ended" },
         { status: 400 }
       );
     }

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 
 import { Eye, EyeOff, UserPlus, ArrowRight, LogIn } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 const schema = z.object({
   fullName: z.string().min(2, "Full name must be at least 2 characters"),
@@ -32,20 +33,6 @@ const schema = z.object({
     .max(64, "Password is too long"),
 });
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition-all duration-300",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur-md">{children}</div>
-    </div>
-  );
-}
 
 export default function SignupPage() {
   const router = useRouter();
@@ -69,11 +56,17 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/api/auth/callback?next=/auth/login`
+          : "https://event-management-app-lac-pi.vercel.app/api/auth/callback?next=/auth/login";
+
       const { data, error } = await supabase.auth.signUp({
         email: values.email.trim(),
         password: values.password,
         options: {
           data: { full_name: values.fullName.trim() },
+          emailRedirectTo: redirectTo,
         },
       });
 

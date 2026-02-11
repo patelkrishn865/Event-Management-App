@@ -22,25 +22,12 @@ import {
 } from "@/components/ui/form";
 
 import { Mail, ArrowLeft, KeyRound, Loader2 } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
 });
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition-all duration-300",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur-md">{children}</div>
-    </div>
-  );
-}
 
 export default function ForgotPasswordPage() {
   const router = useRouter();

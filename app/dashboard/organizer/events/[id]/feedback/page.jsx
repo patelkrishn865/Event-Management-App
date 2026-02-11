@@ -31,21 +31,8 @@ import {
   MessageSquare,
   X,
 } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 function formatDate(iso) {
   if (!iso) return "-";
@@ -111,7 +98,7 @@ function ProgressRow({ label, count, total }) {
 }
 
 export default function OrganizerFeedbackPage() {
-  const { id } = useParams(); 
+  const { id } = useParams();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -147,7 +134,7 @@ export default function OrganizerFeedbackPage() {
 
     const { data, error } = await supabase
       .from("event_feedback")
-      .select("id,rating,comments,suggestions,user_id,ticket_id,created_at")
+      .select("id,rating,comments,suggestions,user_id,ticket_id,created_at,user:profiles(id,full_name)")
       .eq("event_id", id)
       .order("created_at", { ascending: false });
 
@@ -221,7 +208,6 @@ export default function OrganizerFeedbackPage() {
         {/* Hero */}
         <GlowBorder>
           <CardContent className="p-6 sm:p-8 relative overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-primary/10 via-transparent to-secondary/10" />
 
             <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
@@ -399,6 +385,7 @@ export default function OrganizerFeedbackPage() {
                         <TableHead className="w-36">Rating</TableHead>
                         <TableHead>Comments</TableHead>
                         <TableHead>Suggestions</TableHead>
+                        <TableHead>Attendee</TableHead>
                         <TableHead className="w-56">Date</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -422,6 +409,12 @@ export default function OrganizerFeedbackPage() {
                           <TableCell className="max-w-105">
                             <div className="text-sm whitespace-pre-wrap wrap-break-word">
                               {f.suggestions || <span className="text-muted-foreground">—</span>}
+                            </div>
+                          </TableCell>
+
+                          <TableCell>
+                            <div className="text-sm font-medium">
+                              {f.user?.full_name || "Unknown"}
                             </div>
                           </TableCell>
 

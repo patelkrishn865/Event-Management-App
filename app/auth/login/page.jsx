@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { z } from "zod";
@@ -10,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { GlowBorder } from "@/components/ui/glow-border";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -28,23 +29,10 @@ const schema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition-all duration-300",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur-md">{children}</div>
-    </div>
-  );
-}
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [serverMsg, setServerMsg] = useState(null);
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -59,6 +47,14 @@ export default function LoginPage() {
     () => form.formState.isValid && !form.formState.isSubmitting && !loading,
     [form.formState.isValid, form.formState.isSubmitting, loading]
   );
+
+  // Check for error parameter from callback redirect
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error) {
+      setServerMsg(decodeURIComponent(error));
+    }
+  }, [searchParams]);
 
   async function onSubmit(values) {
     setServerMsg(null);

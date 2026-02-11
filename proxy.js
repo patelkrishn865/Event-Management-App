@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 
-export async function middleware(request) {
+export default async function proxy(request) {
     let response = NextResponse.next({
         request: {
             headers: request.headers,
@@ -33,9 +33,21 @@ export async function middleware(request) {
         }
     );
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    let user = null;
+    try {
+        const {
+            data: { user: authUser },
+            error
+        } = await supabase.auth.getUser();
+
+        if (error) {
+            console.warn("Auth error in proxy:", error.message);
+        } else {
+            user = authUser;
+        }
+    } catch (e) {
+        console.error("Unexpected error in proxy auth:", e);
+    }
 
     const url = new URL(request.url);
 

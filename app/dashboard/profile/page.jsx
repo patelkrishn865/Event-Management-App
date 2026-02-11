@@ -12,29 +12,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CardContent } from "@/components/ui/card";
+import { GlowBorder } from "@/components/ui/glow-border";
 
 import {
   ArrowLeft,
   Save,
   Upload,
   User,
+  UserCheck,
   Loader2,
 } from "lucide-react";
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-gradient-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -304,6 +292,56 @@ export default function ProfilePage() {
                     className="rounded-2xl resize-none"
                   />
                 </div>
+
+                {/* Organizer Application Section */}
+                {profile.role === "attendee" && (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 space-y-3">
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <UserCheck className="h-5 w-5 text-primary" />
+                      Become an Organizer
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Want to host your own events? Apply to become an organizer and get access to our event management tools.
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="rounded-xl border-primary text-primary hover:bg-primary hover:text-white"
+                      onClick={async () => {
+                        try {
+                          setSaving(true);
+                          const { data: { session } } = await supabase.auth.getSession();
+                          const res = await fetch("/api/profile/apply-organizer", {
+                            method: "POST",
+                            headers: { "Authorization": `Bearer ${session?.access_token}` },
+                          });
+                          const json = await res.json();
+                          if (!res.ok) throw new Error(json.error);
+                          setMessage({ text: json.message, type: "success" });
+                          setProfile(prev => ({ ...prev, role: "pending_organizer" }));
+                        } catch (err) {
+                          setMessage({ text: err.message, type: "error" });
+                        } finally {
+                          setSaving(false);
+                        }
+                      }}
+                      disabled={saving}
+                    >
+                      Apply Now
+                    </Button>
+                  </div>
+                )}
+
+                {profile.role === "pending_organizer" && (
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-6 space-y-3">
+                    <h3 className="text-lg font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-500">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Application Pending
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Your application to become an organizer is currently being reviewed by our administrators. We'll update your status soon!
+                    </p>
+                  </div>
+                )}
 
                 <div className="pt-4">
                   <Button

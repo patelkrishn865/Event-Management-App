@@ -15,21 +15,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, CalendarDays, MapPin, Send, Star } from "lucide-react";
+import { GlowBorder } from "@/components/ui/glow-border";
 
-function GlowBorder({ children, className = "" }) {
-  return (
-    <div
-      className={[
-        "rounded-3xl p-px bg-linear-to-br",
-        "from-primary/45 via-foreground/10 to-secondary/40",
-        "shadow-sm hover:shadow-md transition",
-        className,
-      ].join(" ")}
-    >
-      <div className="rounded-3xl bg-card/80 backdrop-blur">{children}</div>
-    </div>
-  );
-}
 
 function formatDate(iso) {
   if (!iso) return "-";
@@ -52,6 +39,7 @@ export default function EventFeedbackPage() {
   const [suggestions, setSuggestions] = useState("");
   const [userId, setUserId] = useState(null);
   const [eligibleTicketId, setEligibleTicketId] = useState(null);
+  const [isCompleted, setIsCompleted] = useState(true);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
 
   const canSubmit = useMemo(
@@ -75,7 +63,7 @@ export default function EventFeedbackPage() {
     // Event
     const { data: ev, error: evErr } = await supabase
       .from("events")
-      .select("id,title,starts_at,location,status")
+      .select("id,title,starts_at,ends_at,location,status")
       .eq("id", id)
       .single();
     if (evErr) {
@@ -84,6 +72,15 @@ export default function EventFeedbackPage() {
       return;
     }
     setEvent(ev);
+
+    // Check if event is completed
+    const now = new Date();
+    const eventEnd = ev.ends_at ? new Date(ev.ends_at) : new Date(ev.starts_at);
+    if (now < eventEnd) {
+      setIsCompleted(false);
+      setLoading(false);
+      return;
+    }
 
     const { data: existingFb, error: fbErr } = await supabase
       .from("event_feedback")
@@ -109,7 +106,8 @@ export default function EventFeedbackPage() {
         `
         id,
         status,
-        order:orders!inner ( buyer_id )
+        order:orders!inner ( buyer_id ),
+        ticket_checkins!inner ( id )
       `
       )
       .eq("event_id", id)
@@ -125,7 +123,7 @@ export default function EventFeedbackPage() {
     }
     if (!tix?.id) {
       setMsg(
-        "You can submit feedback only if you purchased/attended this event."
+        "You can submit feedback only if you checked in to this event."
       );
       setEligibleTicketId(null);
     } else {
@@ -156,7 +154,7 @@ export default function EventFeedbackPage() {
     setSubmitting(false);
 
     if (error) return setMsg(error.message);
-    router.push(`/events/${id}`);
+    router.push(`/dashboard/events/${id}`);
   }
 
   if (loading) {
@@ -176,13 +174,12 @@ export default function EventFeedbackPage() {
         {/* Header */}
         <GlowBorder>
           <CardContent className="p-6 sm:p-8 relative overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-primary/10 via-transparent to-secondary/10" />
             <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <Button
                   variant="outline"
                   className="rounded-2xl bg-background/55"
-                  onClick={() => router.push(`/events/${id}`)}
+                  onClick={() => router.push(`/dashboard/events/${id}`)}
                 >
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back
@@ -248,7 +245,23 @@ export default function EventFeedbackPage() {
                   <div className="mt-4">
                     <Button
                       className="rounded-2xl"
-                      onClick={() => router.push(`/events/${id}`)}
+                      onClick={() => router.push(`/dashboard/events/${id}`)}
+                    >
+                      Back to Event
+                    </Button>
+                  </div>
+                </div>
+              ) : !isCompleted ? (
+                <div className="rounded-2xl border bg-background/55 p-5">
+                  <div className="text-base font-semibold">Event Not Over</div>
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Feedback can only be submitted after the event has completed.
+                  </div>
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      className="rounded-2xl"
+                      onClick={() => router.push(`/dashboard/events/${id}`)}
                     >
                       Back to Event
                     </Button>
@@ -258,14 +271,14 @@ export default function EventFeedbackPage() {
                 <div className="rounded-2xl border bg-background/55 p-5">
                   <div className="text-base font-semibold">Not eligible</div>
                   <div className="text-sm text-muted-foreground mt-1">
-                    You can submit feedback only if you purchased/attended this
+                    You can submit feedback only if you checked in to this
                     event.
                   </div>
                   <div className="mt-4">
                     <Button
                       variant="outline"
                       className="rounded-2xl"
-                      onClick={() => router.push("/events")}
+                      onClick={() => router.push("/dashboard/events")}
                     >
                       Browse Events
                     </Button>
