@@ -62,13 +62,21 @@ export default function ResetPasswordPage() {
 
     async function checkSession() {
       try {
-        // Check if we have a valid session (set by the callback route)
+        // Give the Supabase client a moment to parse the fragment if it's there
+        // This is crucial for the implicit flow (fragment based)
+        await new Promise(r => setTimeout(r, 500));
+
         const { data: { session } } = await supabase.auth.getSession();
 
         if (!mounted) return;
 
         if (!session) {
-          setServerMsg("Reset link is invalid or has expired. Please request a new one.");
+          // If no session found immediately, try one more time after a longer delay
+          // This handles slower client-side initialization
+          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          if (!retrySession) {
+            setServerMsg("Reset link is invalid or has expired. Please request a new one.");
+          }
         }
         setReady(true);
       } catch (err) {
