@@ -48,11 +48,30 @@ function LoginForm() {
     [form.formState.isValid, form.formState.isSubmitting, loading]
   );
 
-  // Check for error parameter from callback redirect
+  // Check for error parameter from callback redirect or hash
   useEffect(() => {
+    // 1. Check query parameters
     const error = searchParams.get('error');
     if (error) {
       setServerMsg(decodeURIComponent(error));
+      // Clear the query param to avoid re-showing on refresh
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+      return;
+    }
+
+    // 2. Check hash (common for Supabase errors)
+    const hash = window.location.hash;
+    if (hash && hash.includes('error=')) {
+      const params = new URLSearchParams(hash.substring(1)); // remove #
+      const errorDescription = params.get('error_description');
+      const errorMsg = params.get('error');
+
+      if (errorDescription || errorMsg) {
+        setServerMsg(decodeURIComponent(errorDescription || errorMsg).replace(/\+/g, ' '));
+        // Clear hash
+        window.history.replaceState({}, '', window.location.pathname);
+      }
     }
   }, [searchParams]);
 

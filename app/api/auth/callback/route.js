@@ -6,6 +6,16 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get('code');
     const next = searchParams.get('next') ?? '/dashboard';
+    const error = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
+
+    if (error || errorDescription) {
+        console.error('Auth callback error from Supabase:', error, errorDescription);
+        const msg = errorDescription || error || 'Authentication failed. Please try again.';
+        return NextResponse.redirect(
+            new URL(`/auth/login?error=${encodeURIComponent(msg)}`, request.url)
+        );
+    }
 
     if (code) {
         const cookieStore = await cookies();
